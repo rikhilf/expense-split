@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text, StyleSheet } from 'react-native';
-import { supabase } from './src/lib/supabase';
-import { AuthNavigator } from './src/navigation/AuthNavigator';
-import { AppNavigator } from './src/navigation/AppNavigator';
+import { supabase } from './lib/supabase';
+import { AuthNavigator } from './navigation/AuthNavigator';
+import { AppNavigator } from './navigation/AppNavigator';
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
@@ -56,4 +56,4 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#666',
   },
-});
+}); 
