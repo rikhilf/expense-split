@@ -28,14 +28,14 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Loading...</Text>
-        <StatusBar style="auto" />
-      </View>
-    );
-  }
+  // if (loading) {
+  //   return (
+  //     <View style={styles.loadingContainer}>
+  //       <Text style={styles.loadingText}>Loading...</Text>
+  //       <StatusBar style="auto" />
+  //     </View>
+  //   );
+  // }
 
   return (
     <NavigationContainer>

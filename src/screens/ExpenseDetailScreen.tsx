@@ -6,8 +6,10 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Expense, Group } from '../types/db';
+import { useDeleteExpense } from '../hooks/useDeleteExpense';
 
 interface Props {
   navigation: any;
@@ -21,6 +23,7 @@ interface Props {
 
 export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const { expense, group } = route.params;
+  const { deleteExpense, loading: deleting, error: deleteError } = useDeleteExpense();
 
   const handleEditExpense = () => {
     // TODO: Implement edit expense functionality
@@ -36,9 +39,13 @@ export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            // TODO: Implement delete expense functionality
-            Alert.alert('Coming Soon', 'Delete expense functionality will be available soon!');
+          onPress: async () => {
+            const success = await deleteExpense(expense.id);
+            if (success) {
+              navigation.goBack();
+            } else {
+              Alert.alert('Error', deleteError || 'Failed to delete expense');
+            }
           },
         },
       ]
@@ -90,8 +97,13 @@ export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
           <TouchableOpacity
             style={[styles.actionButton, styles.deleteButton]}
             onPress={handleDeleteExpense}
+            disabled={deleting}
           >
-            <Text style={styles.deleteButtonText}>Delete Expense</Text>
+            {deleting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.deleteButtonText}>Delete Expense</Text>
+            )}
           </TouchableOpacity>
         </View>
 

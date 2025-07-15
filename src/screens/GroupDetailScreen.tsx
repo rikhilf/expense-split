@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   ScrollView,
   RefreshControl,
+  Animated,
+  Easing,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useExpenses } from '../hooks/useExpenses';
@@ -76,13 +78,13 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   );
 
   const renderExpensesContent = () => {
-    if (loading && !refreshing) {
-      return (
-        <View style={styles.centerContainer}>
-          <Text style={styles.loadingText}>Loading expenses...</Text>
-        </View>
-      );
-    }
+    // if (loading && !refreshing) {
+    //   return (
+    //     <View style={styles.centerContainer}>
+    //       <Text style={styles.loadingText}>Loading expenses...</Text>
+    //     </View>
+    //   );
+    // }
 
     if (error) {
       return (
@@ -126,8 +128,45 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
     </View>
   );
 
+  // Animated loading bar
+  const loadingBarAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (loading && expenses.length > 0) {
+      loadingBarAnim.setValue(0);
+      Animated.loop(
+        Animated.timing(loadingBarAnim, {
+          toValue: 1,
+          duration: 1000,
+          easing: Easing.linear,
+          useNativeDriver: false,
+        })
+      ).start();
+    } else {
+      loadingBarAnim.stopAnimation();
+      loadingBarAnim.setValue(0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, expenses.length]);
+
+  const barWidth = loadingBarAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
+
   return (
     <View style={styles.container}>
+      {/* Animated loading bar (only when refetching) */}
+      {loading && expenses.length > 0 && (
+        <View style={styles.loadingBarContainer}>
+          <Animated.View
+            style={[
+              styles.loadingBar,
+              { width: barWidth },
+            ]}
+          />
+        </View>
+      )}
       <ScrollView
         style={styles.scrollView}
         refreshControl={
@@ -198,6 +237,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
+  },
+  loadingBarContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 4,
+    zIndex: 10,
+    backgroundColor: 'transparent',
+  },
+  loadingBar: {
+    height: 4,
+    backgroundColor: '#007AFF',
+    borderRadius: 2,
   },
   scrollView: {
     flex: 1,
