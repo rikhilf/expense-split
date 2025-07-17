@@ -68,7 +68,7 @@ export const useGroups = () => {
       // Insert the group
       const { data: group, error: groupError } = await supabase
         .from('groups')
-        .insert({ name, created_by: user.id })
+        .insert({ name })
         .select()
         .single();
 
@@ -88,7 +88,6 @@ export const useGroups = () => {
 
       if (membershipError) {
         setError(membershipError.message);
-        console.log(membershipError);
         return null;
       }
 
@@ -100,16 +99,13 @@ export const useGroups = () => {
 
       if (createdGroupError) {
         setError(createdGroupError.message);
-        console.log(createdGroupError);
         return null;
       }
 
       // Refresh groups
       await fetchGroups();
 
-      console.log('completed')
-      console.log(group)
-      return group;
+      return createdGroup;
 
       
     } catch (err) {
