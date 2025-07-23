@@ -1,6 +1,8 @@
 import { renderHook, act } from '@testing-library/react';
+// Hook used for fetching and creating groups
 import { useGroups } from '../useGroups';
 
+// Mock the Supabase module so tests don't hit the network
 jest.mock('../../lib/supabase', () => ({
   supabase: {
     auth: { getUser: jest.fn() },
@@ -10,8 +12,10 @@ jest.mock('../../lib/supabase', () => ({
 
 import { supabase } from '../../lib/supabase';
 
+// Test suite for the useGroups hook which handles retrieving and creating groups
 describe('useGroups', () => {
   beforeEach(() => {
+    // Reset mock implementations before each test
     jest.resetAllMocks();
   });
 
@@ -22,6 +26,7 @@ describe('useGroups', () => {
     const membershipsData = [{ group_id: 'g1' }];
     const groupsData = [{ id: 'g1', name: 'test' }];
 
+    // Mock out the various table queries used by the hook
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
       if (table === 'memberships') {
         return {
@@ -40,13 +45,15 @@ describe('useGroups', () => {
       return {} as any;
     });
 
+    // Render the hook which automatically fetches groups on mount
     const { result } = renderHook(() => useGroups());
     
     await act(async () => {
-      // Wait for the effect to run
+      // Wait for the initial fetch effect to complete
       await new Promise(resolve => setTimeout(resolve, 0));
     });
 
+    // The hook should store the groups and not report an error
     expect(result.current.groups).toEqual(groupsData);
     expect(result.current.error).toBeNull();
   });
@@ -57,6 +64,7 @@ describe('useGroups', () => {
 
     const group = { id: 'g1', name: 'New' };
 
+    // Mock database calls for inserting the group and membership
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
       if (table === 'groups') {
         return {
@@ -76,6 +84,7 @@ describe('useGroups', () => {
     await act(async () => {
       resultValue = await result.current.createGroup('New');
     });
+    // Return value should be the created group and the correct table invoked
     expect(resultValue).toEqual(group);
 
     expect(supabase.from).toHaveBeenCalledWith('groups');

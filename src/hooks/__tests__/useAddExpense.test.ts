@@ -1,6 +1,8 @@
 import { renderHook, act } from '@testing-library/react';
+// Hook under test and its input type
 import { useAddExpense, AddExpenseData } from '../useAddExpense';
 
+// Mock the Supabase client that the hook relies on
 jest.mock('../../lib/supabase', () => ({
   supabase: {
     auth: { getUser: jest.fn() },
@@ -10,17 +12,21 @@ jest.mock('../../lib/supabase', () => ({
 
 import { supabase } from '../../lib/supabase';
 
+// Tests around creating a new expense and generating the corresponding splits
 describe('useAddExpense', () => {
   beforeEach(() => {
+    // Ensure mocks from previous tests don't affect the current one
     jest.resetAllMocks();
   });
 
+  // When splitMode is "equal" each member should pay the same amount
   it('adds an expense with equal split', async () => {
     const user = { id: 'u1' };
     (supabase.auth.getUser as jest.Mock).mockResolvedValue({ data: { user } });
 
     const expense = { id: 'e1' };
 
+    // Mock all database calls used by the hook
     const expenseInsert = jest.fn(() => ({ select: () => ({ single: jest.fn().mockResolvedValue({ data: expense, error: null }) }) }));
     const membershipsSelect = jest.fn(() => ({ eq: jest.fn().mockResolvedValue({ data: [{ user_id: 'u1' }, { user_id: 'u2' }], error: null }) }));
     const splitsInsert = jest.fn().mockResolvedValue({ error: null });
@@ -32,10 +38,12 @@ describe('useAddExpense', () => {
       return {} as any;
     });
 
+    // Render the hook so we can call its methods
     const { result } = renderHook(() => useAddExpense());
 
     expect(result.current).toBeDefined();
 
+    // Data passed into the hook to create the expense
     const data: AddExpenseData = {
       description: 'd',
       amount: 100,
@@ -49,6 +57,7 @@ describe('useAddExpense', () => {
     });
     expect(resultValue).toEqual(expense);
 
+    // The hook should calculate two equal splits
     const expectedSplits = [
       { expense_id: 'e1', user_id: 'u1', share: 0.5, amount: 50 },
       { expense_id: 'e1', user_id: 'u2', share: 0.5, amount: 50 },
@@ -57,12 +66,14 @@ describe('useAddExpense', () => {
     expect(splitsInsert).toHaveBeenCalledWith(expectedSplits);
   });
 
+  // When splitMode is "shares" the amounts are divided based on share values
   it('adds an expense with share splits', async () => {
     const user = { id: 'u1' };
     (supabase.auth.getUser as jest.Mock).mockResolvedValue({ data: { user } });
 
     const expense = { id: 'e1' };
 
+    // Again mock the required database methods
     const expenseInsert = jest.fn(() => ({ select: () => ({ single: jest.fn().mockResolvedValue({ data: expense, error: null }) }) }));
     const membershipsSelect = jest.fn(() => ({ eq: jest.fn().mockResolvedValue({ data: [{ user_id: 'u1' }, { user_id: 'u2' }], error: null }) }));
     const splitsInsert = jest.fn().mockResolvedValue({ error: null });
@@ -76,6 +87,7 @@ describe('useAddExpense', () => {
 
     const { result } = renderHook(() => useAddExpense());
 
+    // Shares define that user u1 has 1 part and u2 has 2 parts of the total
     const data: AddExpenseData = {
       description: 'd',
       amount: 90,
@@ -93,6 +105,7 @@ describe('useAddExpense', () => {
     });
     expect(resultValue).toEqual(expense);
 
+    // Expect one third vs two thirds of the amount based on shares
     const expectedSplits = [
       { expense_id: 'e1', user_id: 'u1', share: 1 / 3, amount: 30 },
       { expense_id: 'e1', user_id: 'u2', share: 2 / 3, amount: 60 },

@@ -1,6 +1,8 @@
 import { renderHook, act } from '@testing-library/react';
+// Hook responsible for deleting an expense by id
 import { useDeleteExpense } from '../useDeleteExpense';
 
+// Mock Supabase client used by the hook
 jest.mock('../../lib/supabase', () => ({
   supabase: {
     from: jest.fn(),
@@ -9,12 +11,15 @@ jest.mock('../../lib/supabase', () => ({
 
 import { supabase } from '../../lib/supabase';
 
+// Basic tests ensuring the deleteExpense helper properly issues a delete request
 describe('useDeleteExpense', () => {
   beforeEach(() => {
+    // Clear mocks before each test run
     jest.resetAllMocks();
   });
 
   it('deletes an expense', async () => {
+    // Mock chained supabase methods for deletion
     const eq = jest.fn().mockResolvedValue({ error: null });
     const del = jest.fn(() => ({ eq }));
     (supabase.from as jest.Mock).mockReturnValue({ delete: del });
