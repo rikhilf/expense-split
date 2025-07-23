@@ -1,4 +1,4 @@
-import { renderHook, actAsync } from '../helpers';
+import { renderHook, act } from '@testing-library/react';
 import { useGroups } from '../useGroups';
 
 jest.mock('../../lib/supabase', () => ({
@@ -41,8 +41,10 @@ describe('useGroups', () => {
     });
 
     const { result } = renderHook(() => useGroups());
-    await actAsync(async () => {
-      await Promise.resolve();
+    
+    await act(async () => {
+      // Wait for the effect to run
+      await new Promise(resolve => setTimeout(resolve, 0));
     });
 
     expect(result.current.groups).toEqual(groupsData);
@@ -70,10 +72,11 @@ describe('useGroups', () => {
 
     const { result } = renderHook(() => useGroups());
 
-    await actAsync(async () => {
-      const created = await result.current.createGroup('New');
-      expect(created).toEqual(group);
+    let resultValue;
+    await act(async () => {
+      resultValue = await result.current.createGroup('New');
     });
+    expect(resultValue).toEqual(group);
 
     expect(supabase.from).toHaveBeenCalledWith('groups');
   });

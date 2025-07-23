@@ -1,4 +1,4 @@
-import { renderHook, actAsync } from '../helpers';
+import { renderHook, act } from '@testing-library/react';
 import { useExpenses } from '../useExpenses';
 
 jest.mock('../../lib/supabase', () => ({
@@ -22,8 +22,10 @@ describe('useExpenses', () => {
     (supabase.from as jest.Mock).mockReturnValue({ select });
 
     const { result } = renderHook(() => useExpenses('g1'));
-    await actAsync(async () => {
-      await Promise.resolve();
+    
+    await act(async () => {
+      // Wait for the effect to run
+      await new Promise(resolve => setTimeout(resolve, 0));
     });
 
     expect(result.current.expenses).toEqual(data);

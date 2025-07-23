@@ -1,4 +1,4 @@
-import { renderHook, actAsync } from '../helpers';
+import { renderHook, act } from '@testing-library/react';
 import { useAddExpense, AddExpenseData } from '../useAddExpense';
 
 jest.mock('../../lib/supabase', () => ({
@@ -34,6 +34,8 @@ describe('useAddExpense', () => {
 
     const { result } = renderHook(() => useAddExpense());
 
+    expect(result.current).toBeDefined();
+
     const data: AddExpenseData = {
       description: 'd',
       amount: 100,
@@ -41,10 +43,11 @@ describe('useAddExpense', () => {
       splitMode: 'equal',
     };
 
-    await actAsync(async () => {
-      const res = await result.current.addExpense('g1', data);
-      expect(res).toEqual(expense);
+    let resultValue;
+    await act(async () => {
+      resultValue = await result.current.addExpense('g1', data);
     });
+    expect(resultValue).toEqual(expense);
 
     const expectedSplits = [
       { expense_id: 'e1', user_id: 'u1', share: 0.5, amount: 50 },
@@ -84,10 +87,11 @@ describe('useAddExpense', () => {
       ],
     };
 
-    await actAsync(async () => {
-      const res = await result.current.addExpense('g1', data);
-      expect(res).toEqual(expense);
+    let resultValue;
+    await act(async () => {
+      resultValue = await result.current.addExpense('g1', data);
     });
+    expect(resultValue).toEqual(expense);
 
     const expectedSplits = [
       { expense_id: 'e1', user_id: 'u1', share: 1 / 3, amount: 30 },

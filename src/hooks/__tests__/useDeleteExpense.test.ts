@@ -1,4 +1,4 @@
-import { renderHook, actAsync } from '../helpers';
+import { renderHook, act } from '@testing-library/react';
 import { useDeleteExpense } from '../useDeleteExpense';
 
 jest.mock('../../lib/supabase', () => ({
@@ -21,10 +21,11 @@ describe('useDeleteExpense', () => {
 
     const { result } = renderHook(() => useDeleteExpense());
 
-    await actAsync(async () => {
-      const ok = await result.current.deleteExpense('123');
-      expect(ok).toBe(true);
+    let resultValue;
+    await act(async () => {
+      resultValue = await result.current.deleteExpense('123');
     });
+    expect(resultValue).toBe(true);
 
     expect(supabase.from).toHaveBeenCalledWith('expenses');
     expect(del).toHaveBeenCalled();
