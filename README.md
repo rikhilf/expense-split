@@ -177,6 +177,19 @@ CREATE POLICY "Users can view groups they belong to" ON groups
   );
 ```
 
+## Tests
+
+<details>
+<summary>What do the hook tests cover?</summary>
+
+- **useAddExpense** – verifies that new expenses are created correctly and that splits are calculated for both equal and share modes.
+- **useDeleteExpense** – ensures an expense can be removed via the API.
+- **useExpenses** – checks that expenses are fetched for a given group.
+- **useGroups** – tests fetching existing groups on mount and creating a new group.
+- **useSupabase** – confirms the hook returns the configured Supabase client.
+
+</details>
+
 ## Development Notes
 
 ### TODO Items
