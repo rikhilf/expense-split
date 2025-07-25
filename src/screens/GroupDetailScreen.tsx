@@ -12,6 +12,8 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useExpenses } from '../hooks/useExpenses';
 import { Group, Expense } from '../types/db';
+import { supabase } from '../lib/supabase';
+import { SettleUpModal } from '../components/SettleUpModal';
 
 interface Props {
   navigation: any;
@@ -28,6 +30,12 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const [activeTab, setActiveTab] = useState<'expenses' | 'members'>('expenses');
   const [refreshing, setRefreshing] = useState(false);
   const hasRefetchedRef = useRef(false);
+  const [showSettle, setShowSettle] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
+  }, []);
 
   // Auto-refresh when screen comes into focus (e.g., returning from AddExpense)
   useFocusEffect(
@@ -218,9 +226,14 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             <>
               <View style={styles.expensesHeader}>
                 <Text style={styles.sectionTitle}>Expenses</Text>
-                <TouchableOpacity style={styles.addButton} onPress={handleAddExpense}>
-                  <Text style={styles.addButtonText}>+ Add Expense</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row' }}>
+                  <TouchableOpacity style={styles.addButton} onPress={handleAddExpense}>
+                    <Text style={styles.addButtonText}>+ Add Expense</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.addButton} onPress={() => setShowSettle(true)}>
+                    <Text style={styles.addButtonText}>Settle Up</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
               {renderExpensesContent()}
             </>
@@ -229,6 +242,17 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
           )}
         </View>
       </ScrollView>
+      {userId && (
+        <SettleUpModal
+          isVisible={showSettle}
+          onClose={() => setShowSettle(false)}
+          groupId={group.id}
+          userId={userId}
+          otherUserId={''}
+          defaultAmount={0}
+          expenseList={[]}
+        />
+      )}
     </View>
   );
 };

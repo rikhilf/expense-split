@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,8 +8,10 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { Expense, Group } from '../types/db';
+import { Expense, Group, ExpenseSplit } from '../types/db';
 import { useDeleteExpense } from '../hooks/useDeleteExpense';
+import { useSettlements } from '../hooks/useSettlements';
+import { supabase } from '../lib/supabase';
 
 interface Props {
   navigation: any;
@@ -24,6 +26,38 @@ interface Props {
 export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const { expense, group } = route.params;
   const { deleteExpense, loading: deleting, error: deleteError } = useDeleteExpense();
+
+  const [splits, setSplits] = useState<(ExpenseSplit & { user: { id: string; email: string } })[]>([]);
+  const [splitsLoading, setSplitsLoading] = useState(true);
+  const [splitsError, setSplitsError] = useState<string | null>(null);
+
+  const { settlements, loading: settlementsLoading } = useSettlements(
+    group.id,
+    expense.id
+  );
+
+  useEffect(() => {
+    const fetchSplits = async () => {
+      try {
+        setSplitsLoading(true);
+        setSplitsError(null);
+        const { data, error } = await supabase
+          .from('expense_splits')
+          .select('*, user: user_id (id, email)')
+          .eq('expense_id', expense.id);
+        if (error) {
+          setSplitsError(error.message);
+          return;
+        }
+        setSplits((data as any) || []);
+      } catch (err) {
+        setSplitsError(err instanceof Error ? err.message : 'An error occurred');
+      } finally {
+        setSplitsLoading(false);
+      }
+    };
+    fetchSplits();
+  }, [expense.id]);
 
   const handleEditExpense = () => {
     // TODO: Implement edit expense functionality
@@ -82,11 +116,26 @@ export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Split Breakdown</Text>
-          <View style={styles.breakdownContainer}>
-            <Text style={styles.breakdownNote}>
-              Split details will be available when expense splits are implemented.
-            </Text>
-          </View>
+          {splitsLoading ? (
+            <ActivityIndicator />
+          ) : splitsError ? (
+            <Text style={styles.breakdownNote}>{splitsError}</Text>
+          ) : (
+            <View style={styles.breakdownContainer}>
+              {splits.map((s) => {
+                const paid = settlements.some(
+                  (set) => set.paid_by === s.user_id && set.expense_id === expense.id
+                );
+                return (
+                  <View key={s.id} style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>{s.user.email}</Text>
+                    <Text style={styles.detailValue}>${s.amount.toFixed(2)}</Text>
+                    {paid && <Text style={styles.paidLabel}>Paid</Text>}
+                  </View>
+                );
+              })}
+            </View>
+          )}
         </View>
 
         <View style={styles.section}>
@@ -110,9 +159,17 @@ export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Settlements</Text>
           <View style={styles.settlementsContainer}>
-            <Text style={styles.settlementsNote}>
-              Settlement tracking will be available when settlements are implemented.
-            </Text>
+            {settlementsLoading ? (
+              <ActivityIndicator />
+            ) : settlements.length === 0 ? (
+              <Text style={styles.settlementsNote}>No repayments yet.</Text>
+            ) : (
+              settlements.map((s) => (
+                <Text key={s.id} style={styles.settlementsNote}>
+                  {s.paid_by} paid {s.paid_to} ${s.amount.toFixed(2)}
+                </Text>
+              ))
+            )}
           </View>
         </View>
       </View>
@@ -221,6 +278,11 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  paidLabel: {
+    fontSize: 12,
+    color: '#28a745',
+    marginLeft: 8,
   },
   settlementsContainer: {
     padding: 16,

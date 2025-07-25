@@ -20,6 +20,13 @@ export type Settlement = Database['public']['Tables']['settlements']['Row'];
 export type SettlementInsert = Database['public']['Tables']['settlements']['Insert'];
 export type SettlementUpdate = Database['public']['Tables']['settlements']['Update'];
 
+export interface SettlementItem {
+  id: string;
+  settlement_id: string;
+  expense_id: string;
+  amount: number;
+}
+
 export type User = {
   id: string;
   email: string;
