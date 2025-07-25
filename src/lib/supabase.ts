@@ -130,6 +130,7 @@ export type Database = {
           amount: number;
           settled_at: string;
           note: string | null;
+          expense_id: string | null;
         };
         Insert: {
           id?: string;
@@ -139,6 +140,7 @@ export type Database = {
           amount: number;
           settled_at?: string;
           note?: string | null;
+          expense_id?: string | null;
         };
         Update: {
           id?: string;
@@ -148,6 +150,27 @@ export type Database = {
           amount?: number;
           settled_at?: string;
           note?: string | null;
+          expense_id?: string | null;
+        };
+      };
+      settlement_items: {
+        Row: {
+          id: string;
+          settlement_id: string;
+          expense_id: string;
+          amount: number;
+        };
+        Insert: {
+          id?: string;
+          settlement_id: string;
+          expense_id: string;
+          amount: number;
+        };
+        Update: {
+          id?: string;
+          settlement_id?: string;
+          expense_id?: string;
+          amount?: number;
         };
       };
     };
