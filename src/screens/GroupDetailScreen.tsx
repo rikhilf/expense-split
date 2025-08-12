@@ -1,4 +1,3 @@
-import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,9 +7,15 @@ import {
   RefreshControl,
   Animated,
   Easing,
+  Modal,
+  TextInput,
+  Platform,
+  Alert,
 } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { useExpenses } from '../hooks/useExpenses';
+import { useMembers } from '../hooks/useMembers';
 import { Group, Expense } from '../types/db';
 
 interface Props {
@@ -25,9 +30,22 @@ interface Props {
 export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const { group } = route.params;
   const { expenses, loading, error, refetch } = useExpenses(group.id);
+  const {
+    members,
+    loading: membersLoading,
+    error: membersError,
+    refetch: refetchMembers,
+    inviteMember,
+    removeMember,
+  } = useMembers(group.id);
   const [activeTab, setActiveTab] = useState<'expenses' | 'members'>('expenses');
   const [refreshing, setRefreshing] = useState(false);
   const hasRefetchedRef = useRef(false);
+
+  const [addMemberVisible, setAddMemberVisible] = useState(false);
+  const [inviteName, setInviteName] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [submittingInvite, setSubmittingInvite] = useState(false);
 
   // Auto-refresh when screen comes into focus (e.g., returning from AddExpense)
   useFocusEffect(
@@ -50,7 +68,11 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await refetch();
+    if (activeTab === 'members') {
+      await refetchMembers();
+    } else {
+      await refetch();
+    }
     setRefreshing(false);
   };
 
@@ -60,6 +82,44 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
 
   const handleExpensePress = (expense: Expense) => {
     navigation.navigate('ExpenseDetail', { expense, group });
+  };
+
+  const handleAddMember = () => {
+    setInviteName('');
+    setInviteEmail('');
+    setAddMemberVisible(true);
+  };
+
+  const submitInvite = async () => {
+    if (!inviteName.trim()) {
+      Alert.alert('Name required', 'Please enter a name for the new member.');
+      return;
+    }
+    try {
+      setSubmittingInvite(true);
+      const ok = await inviteMember({
+        displayName: inviteName.trim(),
+        email: inviteEmail ? inviteEmail.trim().toLowerCase() : undefined,
+      });
+      if (ok) {
+        setAddMemberVisible(false);
+      } else if (membersError) {
+        Alert.alert('Error', membersError);
+      }
+    } finally {
+      setSubmittingInvite(false);
+    }
+  };
+
+  const handleRemoveMember = (membershipId: string) => {
+    Alert.alert('Remove Member', 'Are you sure you want to remove this member?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () => removeMember(membershipId),
+      },
+    ]);
   };
 
   const renderExpenseItem = (expense: Expense) => (
@@ -122,11 +182,42 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
     );
   };
 
-  const renderMembersContent = () => (
-    <View style={styles.centerContainer}>
-      <Text style={styles.comingSoonText}>Member management coming soon!</Text>
-    </View>
-  );
+  const renderMembersContent = () => {
+    if (membersError) {
+      return (
+        <View style={styles.centerContainer}>
+          <Text style={styles.errorText}>{membersError}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={refetchMembers}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (membersLoading && members.length === 0) {
+      return (
+        <View style={styles.centerContainer}>
+          <Text style={styles.loadingText}>Loading members...</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.membersList}>
+        {members.map((member) => (
+          <View key={member.id} style={styles.memberItem}>
+            <Text style={styles.memberEmail}>{member.user?.display_name || member.user_id}</Text>
+            <TouchableOpacity
+              style={styles.removeButton}
+              onPress={() => handleRemoveMember(member.id)}
+            >
+              <Text style={styles.removeButtonText}>Remove</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+      </View>
+    );
+  };
 
   // Animated loading bar
   const loadingBarAnim = useRef(new Animated.Value(0)).current;
@@ -225,10 +316,66 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
               {renderExpensesContent()}
             </>
           ) : (
-            renderMembersContent()
+            <>
+              <View style={styles.expensesHeader}>
+                <Text style={styles.sectionTitle}>Members</Text>
+                <TouchableOpacity style={styles.addButton} onPress={handleAddMember}>
+                  <Text style={styles.addButtonText}>+ Add Member</Text>
+                </TouchableOpacity>
+              </View>
+              {renderMembersContent()}
+            </>
           )}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={addMemberVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setAddMemberVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Add Member</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Name (required)"
+              value={inviteName}
+              onChangeText={setInviteName}
+              autoCapitalize="words"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Email (optional)"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              value={inviteEmail}
+              onChangeText={setInviteEmail}
+            />
+            {!!membersError && <Text style={styles.errorText}>{membersError}</Text>}
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalCancel]}
+                onPress={() => setAddMemberVisible(false)}
+                disabled={submittingInvite}
+              >
+                <Text style={styles.modalButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalPrimary]}
+                onPress={submitInvite}
+                disabled={submittingInvite}
+              >
+                <Text style={styles.modalButtonText}>
+                  {submittingInvite ? 'Adding…' : 'Add'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -449,4 +596,90 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 4,
   },
-}); 
+  membersList: {
+    padding: 16,
+  },
+  memberItem: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  memberEmail: {
+    fontSize: 16,
+    color: '#1a1a1a',
+  },
+  removeButton: {
+    backgroundColor: '#ff3b30',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  removeButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 12,
+    color: '#111',
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.select({ ios: 12, android: 10 }),
+    marginBottom: 10,
+    backgroundColor: '#fafafa',
+  },
+  modalActions: {
+    marginTop: 8,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  modalButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  modalCancel: {
+    backgroundColor: '#eee',
+  },
+  modalPrimary: {
+    backgroundColor: '#007AFF',
+  },
+  modalButtonText: {
+    color: '#111',
+    fontWeight: '600',
+  },
+});
