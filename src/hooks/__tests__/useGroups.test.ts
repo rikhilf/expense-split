@@ -10,7 +10,12 @@ jest.mock('../../lib/supabase', () => ({
   },
 }));
 
+jest.mock('../../contexts/ProfileContext', () => ({
+  useProfile: jest.fn(),
+}));
+
 import { supabase } from '../../lib/supabase';
+import { useProfile } from '../../contexts/ProfileContext';
 
 // Test suite for the useGroups hook which handles retrieving and creating groups
 describe('useGroups', () => {
@@ -21,6 +26,13 @@ describe('useGroups', () => {
 
   it('fetches groups on mount', async () => {
     const user = { id: '1' };
+    (useProfile as jest.Mock).mockReturnValue({
+      profileId: 'p1',
+      loading: false,
+      error: null,
+      refresh: jest.fn(),
+      reset: jest.fn(),
+    });
     (supabase.auth.getUser as jest.Mock).mockResolvedValue({ data: { user } });
 
     const membershipsData = [{ group_id: 'g1' }];
@@ -47,7 +59,7 @@ describe('useGroups', () => {
 
     // Render the hook which automatically fetches groups on mount
     const { result } = renderHook(() => useGroups());
-    
+
     await act(async () => {
       // Wait for the initial fetch effect to complete
       await new Promise(resolve => setTimeout(resolve, 0));
@@ -60,22 +72,34 @@ describe('useGroups', () => {
 
   it('creates a group', async () => {
     const user = { id: '1' };
+    (useProfile as jest.Mock).mockReturnValue({
+      profileId: 'p1',
+      loading: false,
+      error: null,
+      refresh: jest.fn(),
+      reset: jest.fn(),
+    });
     (supabase.auth.getUser as jest.Mock).mockResolvedValue({ data: { user } });
 
     const group = { id: 'g1', name: 'New' };
+
+    const insertMembership = jest.fn().mockResolvedValue({ data: {}, error: null });
 
     // Mock database calls for inserting the group and membership
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
       if (table === 'groups') {
         return {
           insert: () => ({ select: () => ({ single: jest.fn().mockResolvedValue({ data: group, error: null }) }) }),
-          select: () => ({ eq: () => ({ single: jest.fn().mockResolvedValue({ data: group, error: null }) }) }),
-        };
+          select: () => ({ in: jest.fn().mockResolvedValue({ data: [group], error: null }) }),
+        } as any;
       }
       if (table === 'memberships') {
-        return { insert: jest.fn().mockResolvedValue({ data: {}, error: null }) };
+        return {
+          insert: insertMembership,
+          select: () => ({ eq: jest.fn().mockResolvedValue({ data: [{ group_id: group.id }], error: null }) }),
+        } as any;
       }
-      return { select: () => ({ eq: jest.fn().mockResolvedValue({ data: [], error: null }) }) };
+      return { select: () => ({ in: jest.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
     });
 
     const { result } = renderHook(() => useGroups());
@@ -86,7 +110,10 @@ describe('useGroups', () => {
     });
     // Return value should be the created group and the correct table invoked
     expect(resultValue).toEqual(group);
-
-    expect(supabase.from).toHaveBeenCalledWith('groups');
+    expect(insertMembership).toHaveBeenCalledWith({
+      user_id: 'p1',
+      group_id: group.id,
+      role: 'admin',
+    });
   });
 });

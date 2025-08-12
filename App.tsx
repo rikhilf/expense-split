@@ -5,6 +5,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { supabase } from './src/lib/supabase';
 import { AuthNavigator } from './src/navigation/AuthNavigator';
 import { AppNavigator } from './src/navigation/AppNavigator';
+import { ProfileProvider } from './src/contexts/ProfileContext';
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
@@ -38,10 +39,12 @@ export default function App() {
   }
 
   return (
-    <NavigationContainer>
-      {user ? <AppNavigator /> : <AuthNavigator />}
-      <StatusBar style="auto" />
-    </NavigationContainer>
+    <ProfileProvider>
+      <NavigationContainer>
+        {user ? <AppNavigator /> : <AuthNavigator />}
+        <StatusBar style="auto" />
+      </NavigationContainer>
+    </ProfileProvider>
   );
 }
 

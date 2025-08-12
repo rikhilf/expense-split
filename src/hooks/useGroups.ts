@@ -1,40 +1,42 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { Group, GroupWithMembers } from '../types/db';
+import { useProfile } from '../contexts/ProfileContext';
+import { GroupWithMembers } from '../types/db';
 
 export const useGroups = () => {
   const [groups, setGroups] = useState<GroupWithMembers[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchGroups = async () => {
+  const { profileId, loading: profileLoading, error: profileError, refresh: refreshProfile } = useProfile();
+
+  const fetchGroups = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setError('User not authenticated');
+      if (profileLoading) return;
+      if (!profileId) {
+        if (profileError) setError(profileError);
+        setGroups([]);
         return;
       }
 
-      // First get the user's memberships
       const { data: memberships, error: membershipError } = await supabase
         .from('memberships')
         .select('group_id')
-        .eq('user_id', user.id);
+        .eq('user_id', profileId);
 
       if (membershipError) {
         setError(membershipError.message);
         return;
       }
 
-      if (!memberships || memberships.length === 0) {
+      if (!memberships?.length) {
         setGroups([]);
         return;
       }
 
-      // Then get the groups
       const groupIds = memberships.map(m => m.group_id);
       const { data, error: fetchError } = await supabase
         .from('groups')
@@ -46,17 +48,23 @@ export const useGroups = () => {
         return;
       }
 
-      setGroups(data || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setGroups((data as GroupWithMembers[]) ?? []);
+    } catch (e: any) {
+      setError(e?.message ?? 'An error occurred');
     } finally {
       setLoading(false);
     }
-  };
+  }, [profileId, profileLoading, profileError]);
 
-  const createGroup = async (name: string) => {
+  const createGroup = useCallback(async (name: string) => {
     try {
       setError(null);
+
+      if (profileLoading) await refreshProfile();
+      if (!profileId) {
+        setError('No profile for current user');
+        return null;
+      }
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -64,64 +72,43 @@ export const useGroups = () => {
         return null;
       }
 
-
-      // Insert the group
       const { data: group, error: groupError } = await supabase
         .from('groups')
         .insert({ name, created_by: user.id })
-        .select()
+        .select('*')
         .single();
 
-      if (groupError) {
-        setError(groupError.message);
+      if (groupError || !group) {
+        setError(groupError?.message ?? 'Could not create group');
         return null;
       }
-      
-      // Add current user as admin
-      const { data: membership, error: membershipError } = await supabase
+
+      const { error: membershipError } = await supabase
         .from('memberships')
         .insert({
-          user_id: user.id,
+          user_id: profileId, // profiles.id from context
           group_id: group.id,
-          role: 'admin'
+          role: 'admin',
         });
 
       if (membershipError) {
         setError(membershipError.message);
-        console.log(membershipError);
         return null;
       }
 
-      const {data: createdGroup, error: createdGroupError} = await supabase
-        .from('groups')
-        .select('*')
-        .eq('id', group.id)
-        .single();
-
-      if (createdGroupError) {
-        setError(createdGroupError.message);
-        console.log(createdGroupError);
-        return null;
-      }
-
-      // Refresh groups
       await fetchGroups();
-
-      console.log('completed')
-      console.log(group)
       return group;
-
-      
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+    } catch (e: any) {
+      setError(e?.message ?? 'An error occurred');
       return null;
     }
-
-  };
+  }, [profileId, profileLoading, refreshProfile, fetchGroups]);
 
   useEffect(() => {
-    fetchGroups();
-  }, []);
+    if (!profileLoading) {
+      void fetchGroups();
+    }
+  }, [profileLoading, profileId, fetchGroups]);
 
   return {
     groups,
@@ -130,4 +117,4 @@ export const useGroups = () => {
     refetch: fetchGroups,
     createGroup
   };
-}; 
+};
