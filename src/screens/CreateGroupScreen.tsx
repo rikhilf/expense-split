@@ -48,6 +48,7 @@ export const CreateGroupScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
+    <>
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -100,6 +101,7 @@ export const CreateGroupScreen: React.FC<Props> = ({ navigation }) => {
     >
       {snackbarMessage}
     </Snackbar>
+    </>
   );
 };
 
