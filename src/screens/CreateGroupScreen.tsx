@@ -10,6 +10,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
+import { Snackbar } from 'react-native-paper';
 import { useGroups } from '../hooks/useGroups';
 
 interface Props {
@@ -19,6 +20,8 @@ interface Props {
 export const CreateGroupScreen: React.FC<Props> = ({ navigation }) => {
   const [groupName, setGroupName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
   const { createGroup } = useGroups();
 
   const handleCreateGroup = async () => {
@@ -29,17 +32,16 @@ export const CreateGroupScreen: React.FC<Props> = ({ navigation }) => {
 
     try {
       setLoading(true);
-      const group = await createGroup(groupName.trim());
-      
-      if (group) {
-        Alert.alert(
-          'Success',
-          'Group created successfully!',
-          [{ text: 'OK', onPress: () => navigation.goBack() }]
-        );
+      const created = await createGroup(groupName.trim());
+      if (created) {
+        navigation.goBack();
+      } else {
+        setSnackbarMessage('Failed to create group');
+        setSnackbarVisible(true);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to create group');
+      setSnackbarMessage('Failed to create group');
+      setSnackbarVisible(true);
     } finally {
       setLoading(false);
     }
@@ -90,6 +92,14 @@ export const CreateGroupScreen: React.FC<Props> = ({ navigation }) => {
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+    <Snackbar
+      visible={snackbarVisible}
+      onDismiss={() => setSnackbarVisible(false)}
+      duration={3000}
+      action={{ label: 'Dismiss', onPress: () => setSnackbarVisible(false) }}
+    >
+      {snackbarMessage}
+    </Snackbar>
   );
 };
 

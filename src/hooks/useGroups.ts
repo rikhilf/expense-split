@@ -2,6 +2,13 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useProfile } from '../contexts/ProfileContext';
 import { GroupWithMembers } from '../types/db';
+import type { Database } from '../types/database.types';
+
+type CreateGroupAndSeedAdminResponse = {
+  group: Database['public']['Tables']['groups']['Row'];
+  membership: Database['public']['Tables']['memberships']['Row'];
+  profile: Database['public']['Tables']['profiles']['Row'];
+};
 
 export const useGroups = () => {
   const [groups, setGroups] = useState<GroupWithMembers[]>([]);
@@ -61,7 +68,7 @@ export const useGroups = () => {
       setError(null);
 
       // Call Edge Function which creates group and seeds admin membership
-      const { data, error: fnError } = await supabase.functions.invoke(
+      const { data, error: fnError } = await supabase.functions.invoke<CreateGroupAndSeedAdminResponse>(
         'create_group_and_seed_admin',
         { body: { name } }
       );
