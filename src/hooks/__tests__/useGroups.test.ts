@@ -7,6 +7,7 @@ jest.mock('../../lib/supabase', () => ({
   supabase: {
     auth: { getUser: jest.fn() },
     from: jest.fn(),
+    functions: { invoke: jest.fn() },
   },
 }));
 
@@ -70,7 +71,7 @@ describe('useGroups', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('creates a group', async () => {
+  it('creates a group via edge function', async () => {
     const user = { id: '1' };
     (useProfile as jest.Mock).mockReturnValue({
       profileId: 'p1',
@@ -83,23 +84,20 @@ describe('useGroups', () => {
 
     const group = { id: 'g1', name: 'New' };
 
-    const insertMembership = jest.fn().mockResolvedValue({ data: {}, error: null });
-
-    // Mock database calls for inserting the group and membership
+    // Mock the edge function response and subsequent membership/groups fetch
+    (supabase.functions.invoke as jest.Mock).mockResolvedValue({ data: { group }, error: null });
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
-      if (table === 'groups') {
-        return {
-          insert: () => ({ select: () => ({ single: jest.fn().mockResolvedValue({ data: group, error: null }) }) }),
-          select: () => ({ in: jest.fn().mockResolvedValue({ data: [group], error: null }) }),
-        } as any;
-      }
       if (table === 'memberships') {
         return {
-          insert: insertMembership,
           select: () => ({ eq: jest.fn().mockResolvedValue({ data: [{ group_id: group.id }], error: null }) }),
         } as any;
       }
-      return { select: () => ({ in: jest.fn().mockResolvedValue({ data: [], error: null }) }) } as any;
+      if (table === 'groups') {
+        return {
+          select: () => ({ in: jest.fn().mockResolvedValue({ data: [group], error: null }) }),
+        } as any;
+      }
+      return {} as any;
     });
 
     const { result } = renderHook(() => useGroups());
@@ -108,12 +106,8 @@ describe('useGroups', () => {
     await act(async () => {
       resultValue = await result.current.createGroup('New');
     });
-    // Return value should be the created group and the correct table invoked
+    // Return value should be the created group and the edge function invoked
     expect(resultValue).toEqual(group);
-    expect(insertMembership).toHaveBeenCalledWith({
-      user_id: 'p1',
-      group_id: group.id,
-      role: 'admin',
-    });
+    expect(supabase.functions.invoke).toHaveBeenCalledWith('create_group_and_seed_admin', { body: { name: 'New' } });
   });
 });
