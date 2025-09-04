@@ -7,7 +7,6 @@ import type { Database } from '../types/database.types';
 const extra = Constants.expoConfig?.extra;
 const supabaseUrl = extra?.SUPABASE_URL;
 const supabaseAnonKey = extra?.SUPABASE_ANON_KEY;
-const supabaseFunctionsUrl: string | undefined = (extra as any)?.SUPABASE_FUNCTIONS_URL;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Missing Supabase environment variables');
@@ -22,9 +21,5 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
-  },
-  functions: {
-    // Allows hitting local Edge Functions in dev (e.g. http://127.0.0.1:54321/functions/v1)
-    url: supabaseFunctionsUrl,
   },
 });

@@ -34,9 +34,6 @@ export default {
       extra: {
         SUPABASE_URL: process.env.SUPABASE_URL,
         SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
-        // Optional: override for local Edge Functions in dev
-        // e.g. SUPABASE_FUNCTIONS_URL=http://127.0.0.1:54321/functions/v1
-        SUPABASE_FUNCTIONS_URL: process.env.SUPABASE_FUNCTIONS_URL,
       },
     scheme: 'expense-split'
     }
