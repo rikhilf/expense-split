@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Expense, ExpenseWithSplits } from '../types/db';
+import { Expense } from '../types/db';
 
 export const useExpenses = (groupId: string) => {
-  const [expenses, setExpenses] = useState<ExpenseWithSplits[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

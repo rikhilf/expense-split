@@ -2,6 +2,13 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useProfile } from '../contexts/ProfileContext';
 import { GroupWithMembers } from '../types/db';
+import type { Database } from '../types/database.types';
+
+type CreateGroupAndSeedAdminResponse = {
+  group: Database['public']['Tables']['groups']['Row'];
+  membership: Database['public']['Tables']['memberships']['Row'];
+  profile: Database['public']['Tables']['profiles']['Row'];
+};
 
 export const useGroups = () => {
   const [groups, setGroups] = useState<GroupWithMembers[]>([]);
@@ -60,49 +67,27 @@ export const useGroups = () => {
     try {
       setError(null);
 
-      if (profileLoading) await refreshProfile();
-      if (!profileId) {
-        setError('No profile for current user');
+      // Call Edge Function which creates group and seeds admin membership
+      const { data, error: fnError } = await supabase.functions.invoke<CreateGroupAndSeedAdminResponse>(
+        'create_group_and_seed_admin',
+        { body: { name } }
+      );
+
+      if (fnError) {
+        setError(fnError.message ?? 'Could not create group');
         return null;
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setError('User not authenticated');
-        return null;
-      }
+      const group = (data as any)?.group ?? null;
 
-      const { data: group, error: groupError } = await supabase
-        .from('groups')
-        .insert({ name, created_by: user.id })
-        .select('*')
-        .single();
-
-      if (groupError || !group) {
-        setError(groupError?.message ?? 'Could not create group');
-        return null;
-      }
-
-      const { error: membershipError } = await supabase
-        .from('memberships')
-        .insert({
-          user_id: profileId, // profiles.id from context
-          group_id: group.id,
-          role: 'admin',
-        });
-
-      if (membershipError) {
-        setError(membershipError.message);
-        return null;
-      }
-
+      // Refresh local groups state
       await fetchGroups();
       return group;
     } catch (e: any) {
       setError(e?.message ?? 'An error occurred');
       return null;
     }
-  }, [profileId, profileLoading, refreshProfile, fetchGroups]);
+  }, [fetchGroups]);
 
   useEffect(() => {
     if (!profileLoading) {

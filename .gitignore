@@ -35,3 +35,9 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+# Supabase (local dev artifacts)
+supabase/.temp/
+supabase/.branches/
+supabase/.env
+supabase/.env.local
