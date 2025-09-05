@@ -33,6 +33,26 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
   const [splitMode, setSplitMode] = useState<SplitMode>('equal');
   const [showSuccess, setShowSuccess] = useState(false);
 
+  const handleAmountChange = (text: string) => {
+    // Allow digits and a single decimal point
+    let sanitized = text.replace(/[^0-9.]/g, '');
+    // Keep only the first decimal point
+    sanitized = sanitized.replace(/(\..*)\./g, '$1');
+    // Normalize leading decimal to 0.
+    if (sanitized.startsWith('.')) sanitized = `0${sanitized}`;
+    // Prevent leading zeros unless it's "0." format
+    if (sanitized.startsWith('0') && !sanitized.startsWith('0.')) {
+      sanitized = sanitized.replace(/^0+/, '');
+      if (sanitized === '') sanitized = '0';
+    }
+    // Limit to two decimal places if present
+    if (sanitized.includes('.')) {
+      const [intPart, fracPart] = sanitized.split('.');
+      sanitized = `${intPart}.${(fracPart || '').slice(0, 2)}`;
+    }
+    setAmount(sanitized);
+  };
+
   const handleAddExpense = async () => {
     if (!description.trim() || !amount.trim()) {
       Alert.alert('Error', 'Please fill in all required fields');
@@ -93,8 +113,8 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
               style={styles.input}
               placeholder="0.00"
               value={amount}
-              onChangeText={setAmount}
-              keyboardType="decimal-pad"
+              onChangeText={handleAmountChange}
+              keyboardType={Platform.OS === 'ios' ? 'decimal-pad' : 'numeric'}
             />
 
             <Text style={styles.label}>Date</Text>
