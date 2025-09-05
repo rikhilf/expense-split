@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import type { Database } from '../types/database.types';
 
 type MemberRow = {
   id: string;
@@ -14,6 +15,14 @@ type MemberRow = {
 };
 
 type InviteInput = { displayName: string; email?: string };
+
+type InviteMemberResponse = {
+  membership: Database['public']['Tables']['memberships']['Row'];
+  profile: Database['public']['Tables']['profiles']['Row'];
+  created: boolean;
+  placeholder_created?: boolean;
+  already_member?: boolean;
+};
 
 export const useMembers = (groupId: string) => {
   const [members, setMembers] = useState<MemberRow[]>([]);
@@ -54,37 +63,53 @@ export const useMembers = (groupId: string) => {
     try {
       setError(null);
 
-      // 1) Create placeholder profile (email optional, not unique)
-      const { data: prof, error: pErr } = await supabase
-        .from('profiles')
-        .insert({
-          display_name: displayName.trim(),
-          email: email ? email.trim().toLowerCase() : null,
-          auth_user_id: null,
-        })
-        .select('id')
-        .single();
+      // If an email is provided, use the Edge Function directly.
+      if (email && email.trim()) {
+        const { data, error: fnError } = await supabase.functions.invoke<InviteMemberResponse>(
+          'invite_member',
+          {
+            body: {
+              group_id: groupId,
+              email: email.trim().toLowerCase(),
+              display_name: displayName.trim(),
+              role: 'member',
+            },
+          }
+        );
 
-      if (pErr || !prof) {
-        setError(pErr?.message ?? 'Could not create profile');
+        if (fnError) {
+          setError(fnError.message ?? 'Failed to invite member');
+          return false;
+        }
+
+        if ((data as any)?.already_member) {
+          setError('That person is already in this group.');
+          return false;
+        }
+
+        await fetchMembers();
+        return true;
+      }
+
+      // Name-only flow: call Edge Function to create placeholder + membership.
+      const { data, error: fnError } = await supabase.functions.invoke<InviteMemberResponse>(
+        'invite_member',
+        {
+          body: {
+            group_id: groupId,
+            display_name: displayName.trim(),
+            role: 'member',
+          },
+        }
+      );
+
+      if (fnError) {
+        setError(fnError.message ?? 'Failed to add member');
         return false;
       }
 
-      // 2) Insert membership (unique (group_id, user_id) prevents dupes)
-      const { error: mErr } = await supabase
-        .from('memberships')
-        .insert({ group_id: groupId, user_id: prof.id, role: 'member' });
-
-      if (mErr) {
-        // If duplicate (constraint 23505), show friendly error
-        // Supabase PG error code exposed as mErr.code when available
-        // If not available, just show message.
-        // @ts-ignore
-        if (mErr.code === '23505') {
-          setError('That person is already in this group.');
-        } else {
-          setError(mErr.message);
-        }
+      if ((data as any)?.already_member) {
+        setError('That person is already in this group.');
         return false;
       }
 

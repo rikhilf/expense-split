@@ -4,6 +4,7 @@ import { useMembers } from '../useMembers';
 jest.mock('../../lib/supabase', () => ({
   supabase: {
     from: jest.fn(),
+    functions: { invoke: jest.fn() },
   },
 }));
 
@@ -39,26 +40,24 @@ describe('useMembers', () => {
     expect(returns).toHaveBeenCalled();
   });
 
-  it('invites a member', async () => {
+  it('invites a member via edge function (email path)', async () => {
     const fetchReturns = jest.fn().mockResolvedValue({ data: [], error: null });
     const fetchEq = jest.fn(() => ({ returns: fetchReturns }));
     const fetchSelect = jest.fn(() => ({ eq: fetchEq }));
-
-    const insertMembership = jest.fn().mockResolvedValue({ error: null });
-    const insertProfile = jest.fn(() => ({ select: () => ({ single: jest.fn().mockResolvedValue({ data: { id: 'p1' }, error: null }) }) }));
 
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
       if (table === 'memberships') {
         return {
           select: fetchSelect,
-          insert: insertMembership,
           delete: jest.fn(),
         } as any;
       }
-      if (table === 'profiles') {
-        return { insert: insertProfile } as any;
-      }
       return {} as any;
+    });
+
+    (supabase.functions.invoke as jest.Mock).mockResolvedValue({
+      data: { membership: { id: 'm1' }, profile: { id: 'p1' }, created: true },
+      error: null,
     });
 
     const { result } = renderHook(() => useMembers('g1'));
@@ -72,11 +71,44 @@ describe('useMembers', () => {
       expect(ok).toBe(true);
     });
 
-    expect(insertProfile).toHaveBeenCalledWith({
-      display_name: 'Alice',
-      email: 'a@b.com',
-      auth_user_id: null,
+    expect(supabase.functions.invoke).toHaveBeenCalledWith('invite_member', {
+      body: { group_id: 'g1', email: 'a@b.com', display_name: 'Alice', role: 'member' },
     });
-    expect(insertMembership).toHaveBeenCalledWith({ group_id: 'g1', user_id: 'p1', role: 'member' });
+  });
+
+  it('invites a placeholder member via edge function (name only)', async () => {
+    const fetchReturns = jest.fn().mockResolvedValue({ data: [], error: null });
+    const fetchEq = jest.fn(() => ({ returns: fetchReturns }));
+    const fetchSelect = jest.fn(() => ({ eq: fetchEq }));
+
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'memberships') {
+        return {
+          select: fetchSelect,
+          delete: jest.fn(),
+        } as any;
+      }
+      return {} as any;
+    });
+
+    (supabase.functions.invoke as jest.Mock).mockResolvedValue({
+      data: { membership: { id: 'm2' }, profile: { id: 'p2' }, created: true },
+      error: null,
+    });
+
+    const { result } = renderHook(() => useMembers('g1'));
+
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+
+    await act(async () => {
+      const ok = await result.current.inviteMember({ displayName: 'Bob' });
+      expect(ok).toBe(true);
+    });
+
+    expect(supabase.functions.invoke).toHaveBeenCalledWith('invite_member', {
+      body: { group_id: 'g1', display_name: 'Bob', role: 'member' },
+    });
   });
 });

@@ -9,3 +9,14 @@ entrypoint = "./functions/create_group_and_seed_admin/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/create_group_and_seed_admin/*.html" ]
+
+[functions.invite_member]
+enabled = true
+verify_jwt = true
+import_map = "./functions/invite_member/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/invite_member/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/invite_member/*.html" ]
