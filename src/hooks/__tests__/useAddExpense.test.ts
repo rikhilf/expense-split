@@ -10,7 +10,14 @@ jest.mock('../../lib/supabase', () => ({
   },
 }));
 
+// Mock profile context used by the hook
+jest.mock('../../contexts/ProfileContext', () => ({
+  useProfile: jest.fn(),
+  getOrCreateProfileId: jest.fn(),
+}));
+
 import { supabase } from '../../lib/supabase';
+import { useProfile } from '../../contexts/ProfileContext';
 
 // Tests around creating a new expense and generating the corresponding splits
 describe('useAddExpense', () => {
@@ -21,8 +28,14 @@ describe('useAddExpense', () => {
 
   // When splitMode is "equal" each member should pay the same amount
   it('adds an expense with equal split', async () => {
-    const user = { id: 'u1' };
-    (supabase.auth.getUser as jest.Mock).mockResolvedValue({ data: { user } });
+    // Provide a profile id from context
+    (useProfile as jest.Mock).mockReturnValue({
+      profileId: 'p1',
+      loading: false,
+      error: null,
+      refresh: jest.fn(),
+      reset: jest.fn(),
+    });
 
     const expense = { id: 'e1' };
 
@@ -68,8 +81,13 @@ describe('useAddExpense', () => {
 
   // When splitMode is "shares" the amounts are divided based on share values
   it('adds an expense with share splits', async () => {
-    const user = { id: 'u1' };
-    (supabase.auth.getUser as jest.Mock).mockResolvedValue({ data: { user } });
+    (useProfile as jest.Mock).mockReturnValue({
+      profileId: 'p1',
+      loading: false,
+      error: null,
+      refresh: jest.fn(),
+      reset: jest.fn(),
+    });
 
     const expense = { id: 'e1' };
 

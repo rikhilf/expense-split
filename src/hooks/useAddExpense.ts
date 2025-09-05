@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { ExpenseInsert, ExpenseSplitInsert } from '../types/db';
+import { useProfile, getOrCreateProfileId } from '../contexts/ProfileContext';
 
 export type SplitMode = 'equal' | 'shares';
 
@@ -15,14 +16,15 @@ export type AddExpenseData = {
 export const useAddExpense = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { profileId } = useProfile();
 
   const addExpense = async (groupId: string, expenseData: AddExpenseData) => {
     try {
       setLoading(true);
       setError(null);
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      // Resolve a profile id (prefer context, fallback to on-demand resolver)
+      const currentProfileId = profileId ?? (await getOrCreateProfileId());
+      if (!currentProfileId) {
         setError('User not authenticated');
         return null;
       }
@@ -32,7 +34,7 @@ export const useAddExpense = () => {
         .from('expenses')
         .insert({
           group_id: groupId,
-          created_by: user.id,
+          created_by: currentProfileId,
           description: expenseData.description,
           amount: expenseData.amount,
           date: expenseData.date,
