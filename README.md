@@ -1,203 +1,160 @@
-# Expense Split App
+# Expense Split
 
-A React Native + Expo app for splitting expenses with friends and groups, built with TypeScript and Supabase.
+A mobile app for splitting expenses with friends, built with Expo (React Native) and Supabase (Postgres + Auth + Edge Functions).
+
+<p align="center">
+  <em>Create groups, add expenses, split fairly, and settle up.</em>
+</p>
+
+## Table of Contents
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Environment Variables](#environment-variables)
+  - [Run the App](#run-the-app)
+- [Supabase Setup](#supabase-setup)
+  - [Schema](#schema)
+  - [Edge Functions](#edge-functions)
+- [Testing](#testing)
+- [Project Structure](#project-structure)
+- [Troubleshooting](#troubleshooting)
+- [Security Notes](#security-notes)
 
 ## Features
+- Create groups and invite members (by email or placeholder names)
+- Add expenses and split per member
+- Record settlements that can cover multiple expenses
+- Email/password and OAuth sign-in (Google, Apple)
+- Secure by default with Supabase RLS
 
-### Authentication
-- Email/password authentication
-- Google OAuth integration
-- Apple OAuth integration
-- Session management
+## Tech Stack
+- Expo React Native (TypeScript)
+- Supabase: Postgres, Auth, Edge Functions
+- Jest + Testing Library (unit tests)
 
-### Groups
-- Create and manage expense groups
-- View all groups you belong to
-- Group details with member information
-
-### Expenses
-- Add expenses to groups
-- Equal split functionality
-- Custom shares (coming soon)
-- Expense details and breakdown
-- Edit and delete expenses (coming soon)
-
-### Database Schema
-
-The app uses Supabase with the following tables:
-
-1. **groups** - Store group information
-2. **memberships** - Track user membership in groups
-3. **expenses** - Store expense records
-4. **expense_splits** - Track how expenses are split between users
-5. **settlements** - Track payments between users
-
-## Project Structure
-
-```
-src/
-├── components/          # Reusable UI components
-├── hooks/              # Custom React hooks
-│   ├── useSupabase.ts
-│   ├── useGroups.ts
-│   ├── useExpenses.ts
-│   └── useAddExpense.ts
-├── lib/                # External library configurations
-│   └── supabase.ts     # Supabase client setup
-├── navigation/         # Navigation components
-│   ├── AuthNavigator.tsx
-│   └── AppNavigator.tsx
-├── screens/           # Screen components
-│   ├── SignInScreen.tsx
-│   ├── SignUpScreen.tsx
-│   ├── GroupListScreen.tsx
-│   ├── CreateGroupScreen.tsx
-│   ├── GroupDetailScreen.tsx
-│   ├── AddExpenseScreen.tsx
-│   └── ExpenseDetailScreen.tsx
-└── types/             # TypeScript type definitions
-    └── db.ts          # Database types
-```
-
-## Setup Instructions
+## Getting Started
 
 ### Prerequisites
-- Node.js (v16 or higher)
-- Expo CLI
-- Supabase account
+- Node 18+ and npm
+- Expo CLI (`npm i -g expo`) and optionally the Expo Go app on your device
+- A Supabase project (or Supabase CLI for local dev)
 
 ### Installation
-
-1. **Install dependencies**
-   ```bash
-   cd expense-split
-   npm install
-   ```
-
-2. **Configure environment variables**
-   Create a `.env` file in the root directory:
-   ```
-   SUPABASE_URL=your_supabase_url
-   SUPABASE_ANON_KEY=your_supabase_anon_key
-   ```
-
-3. **Start the development server**
-   ```bash
-   npm start
-   ```
-
-### Supabase Setup
-
-1. Create a new Supabase project
-2. Set up the database tables with the provided schema
-3. Configure Row Level Security (RLS) policies
-4. Set up authentication providers (Google, Apple)
-5. Update the environment variables with your Supabase credentials
-
-## Database Schema
-
-### Groups Table
-```sql
-CREATE TABLE groups (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
-);
+```bash
+npm install
 ```
 
-### Memberships Table
-```sql
-CREATE TABLE memberships (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  group_id UUID REFERENCES groups(id) ON DELETE CASCADE,
-  role TEXT CHECK (role IN ('admin', 'member')) DEFAULT 'member',
-  joined_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
-);
+### Environment Variables
+Create `.env` in this folder with your public Supabase credentials (anon key is safe to ship thanks to RLS):
+```bash
+SUPABASE_URL=your_supabase_url
+SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+These are loaded by `app.config.js` via `dotenv/config` and exposed to the app through `expo.extra`.
+
+### Run the App
+```bash
+# Start Metro
+npm run start
+
+# iOS simulator
+npm run ios
+
+# Android emulator
+npm run android
+
+# Web
+npm run web
 ```
 
-### Expenses Table
-```sql
-CREATE TABLE expenses (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  group_id UUID REFERENCES groups(id) ON DELETE CASCADE,
-  created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  description TEXT NOT NULL,
-  amount NUMERIC(10,2) NOT NULL,
-  date DATE NOT NULL,
-  type TEXT DEFAULT 'manual',
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now())
-);
+Sign up or sign in from the app screens. For OAuth in development, add a redirect in Supabase Auth: `expense-split://auth/callback` (matches the `scheme` in `app.config.js`).
+
+## Supabase Setup
+
+### Schema
+The canonical schema is in:
+- `schema.sql`
+
+It defines:
+- `profiles` (app users, internally referenced by `profiles.id`)
+- `groups`, `memberships` (membership links use `profiles.id`)
+- `expenses`, `expense_splits`
+- `settlements`, `settlement_items`
+- optional `invoices`, `settlement_shares`
+
+RLS policies and design notes are documented in:
+- `LLMCONTEXT.md`
+
+### Edge Functions
+The app uses two functions:
+- `create_group_and_seed_admin`: Creates a group and adds the caller as admin.
+- `invite_member`: Invite by existing profile or email (creates a placeholder profile if needed). Any member can invite; only admins can grant admin.
+
+Local development:
+```bash
+# 1) Optional: start a local Supabase stack
+supabase start
+
+# 2) Provide service secrets to functions
+#    (or set via `supabase secrets set ...`)
+cat > supabase/.env.local <<EOF
+URL=your_supabase_url
+SERVICE_ROLE_KEY=your_service_role_key
+EOF
+
+# 3) Serve functions locally with env
+supabase functions serve --env-file supabase/.env.local
 ```
 
-### Expense Splits Table
-```sql
-CREATE TABLE expense_splits (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  expense_id UUID REFERENCES expenses(id) ON DELETE CASCADE,
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  share NUMERIC(5,4) NOT NULL,
-  amount NUMERIC(10,2) NOT NULL
-);
+Deploy to your Supabase project:
+```bash
+supabase functions deploy create_group_and_seed_admin invite_member
+supabase secrets set --env-file supabase/.env.local
 ```
 
-### Settlements Table
-```sql
-CREATE TABLE settlements (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  group_id UUID REFERENCES groups(id) ON DELETE CASCADE,
-  paid_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  paid_to UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  amount NUMERIC(10,2) NOT NULL,
-  settled_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc', now()),
-  note TEXT
-);
+Notes:
+- Functions require a user JWT (the app calls them via `supabase.functions.invoke(...)` after sign-in).
+- Service role key is only used in Edge Functions and never shipped in the app.
+
+## Testing
+```bash
+npm test
+```
+Tests mock the Supabase client and cover hooks like `useGroups`, `useMembers`, and expense flows.
+
+## Project Structure
+```
+.
+├─ app.config.js              # Loads .env and exposes values to Expo
+├─ schema.sql                 # DB schema reference
+├─ src/
+│  ├─ lib/supabase.ts        # Supabase client (uses expo extra values)
+│  ├─ hooks/                 # React hooks (groups, members, expenses)
+│  ├─ types/                 # Generated DB types + app types
+│  └─ screens/               # SignIn/SignUp, Groups, etc.
+└─ supabase/
+   ├─ config.toml            # Functions config
+   ├─ .env.local             # Local function secrets (URL, SERVICE_ROLE_KEY)
+   └─ functions/
+      ├─ create_group_and_seed_admin/
+      └─ invite_member/
 ```
 
-## RLS Policies
+## Troubleshooting
+- Missing env vars: Ensure `SUPABASE_URL` and `SUPABASE_ANON_KEY` are set in `.env`.
+- OAuth callback: Set redirect URL in Supabase Auth to `expense-split://auth/callback`.
+- 401 from functions locally: Ensure you’re signed in (functions require a user JWT) or test via curl with a valid JWT.
+- RLS errors: Ensure policies from `LLMCONTEXT.md` are applied (memberships/expenses/expense_splits are the usual culprits).
 
-The app uses Row Level Security to ensure users only see data they're authorized to access. Example policies:
+## Security Notes
+- The anon key is public by design (enforced by RLS).
+- Never expose the service role key in the app; keep it only in Edge Functions via Supabase secrets.
 
-```sql
--- Enable RLS on all tables
-ALTER TABLE groups ENABLE ROW LEVEL SECURITY;
-ALTER TABLE memberships ENABLE ROW LEVEL SECURITY;
-ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
-ALTER TABLE expense_splits ENABLE ROW LEVEL SECURITY;
-ALTER TABLE settlements ENABLE ROW LEVEL SECURITY;
+---
 
--- Example policy for groups
-CREATE POLICY "Users can view groups they belong to" ON groups
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM memberships 
-      WHERE memberships.group_id = groups.id 
-      AND memberships.user_id = auth.uid()
-    )
-  );
-```
-
-## Tests
-
-<details>
-<summary>What do the hook tests cover?</summary>
-
-- **useAddExpense** – verifies that new expenses are created correctly and that splits are calculated for both equal and share modes.
-- **useDeleteExpense** – ensures an expense can be removed via the API.
-- **useExpenses** – checks that expenses are fetched for a given group.
-- **useGroups** – tests fetching existing groups on mount and creating a new group.
-- **useSupabase** – confirms the hook returns the configured Supabase client.
-
-</details>
-
-## Development Notes
-
-### TODO Items
-- [ ] Implement custom expense shares
-- [ ] Add expense editing functionality
-- [ ] Add expense deletion functionality
-- [ ] Implement member management
-- [ ] Add settlement tracking
+For deeper technical details (schema, RLS, helper functions, invariants), see `LLMCONTEXT.md`.
 - [ ] Implement invoice parsing (future feature)
 - [ ] Add push notifications
 - [ ] Add offline support
