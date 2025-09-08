@@ -7,12 +7,12 @@ type MemberRow = {
   id: string;
   role: 'member' | 'admin';
   user_id: string;
+  authenticated: boolean;
   user: {
     id: string;
     display_name: string;
     email: string | null;
     avatar_url: string | null;
-    auth_user_id: string | null;
   } | null;
 };
 
@@ -50,7 +50,8 @@ export const useMembers = (groupId: string) => {
   id,
   role,
   user_id,
-  user:profiles ( id, display_name, email, avatar_url, auth_user_id )
+  authenticated,
+  user:profiles ( id, display_name, email, avatar_url )
 `)
         .eq('group_id', groupId)
         .returns<MemberRow[]>();
@@ -141,7 +142,7 @@ export const useMembers = (groupId: string) => {
         return false;
       }
 
-      const isPlaceholder = !target.user?.auth_user_id;
+      const isPlaceholder = !target.authenticated;
 
       // Check permissions: non-admins can only remove placeholder profiles
       if (!isCurrentUserAdmin && !isPlaceholder) {

@@ -45,6 +45,7 @@ id              uuid pk default gen_random_uuid()
 user_id         uuid not null references profiles(id)
 group_id        uuid not null references groups(id)
 role            text not null default 'member'   -- 'member' | 'admin'
+authenticated   boolean not null default false   -- true if profile is linked to an auth user
 joined_at       timestamptz default timezone('utc', now())
 unique(user_id, group_id)
 
@@ -253,6 +254,7 @@ Allows only current admins to grant role admin.
 Accepts either profile_id or email.
 
 If email and no profile exists, creates a placeholder (auth_user_id=NULL) profile and inserts membership.
+Sets memberships.authenticated based on whether the target profile has a non-null auth_user_id.
 
 Idempotent: returns existing membership if already present.
 
@@ -355,6 +357,9 @@ using (
       and p.auth_user_id is null
   )
 );
+
+-- Alternatively, if you prefer to drive placeholder logic via memberships.authenticated,
+-- mirror the policy to check (memberships.authenticated = false) instead of profiles.auth_user_id is null.
 
 -- expenses INSERT (member)
 create policy "Group members can add expenses"

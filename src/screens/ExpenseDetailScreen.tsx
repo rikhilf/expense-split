@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Expense, Group } from '../types/db';
 import { useDeleteExpense } from '../hooks/useDeleteExpense';
+import { useExpenseSplits } from '../hooks/useExpenseSplits';
 
 interface Props {
   navigation: any;
@@ -17,13 +18,15 @@ interface Props {
     params: {
       expense: Expense;
       group: Group;
+      creatorDisplayName?: string | null;
     };
   };
 }
 
 export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
-  const { expense, group } = route.params;
+  const { expense, group, creatorDisplayName } = route.params;
   const { deleteExpense, loading: deleting, error: deleteError } = useDeleteExpense();
+  const { splits, loading: splitsLoading, error: splitsError } = useExpenseSplits(expense.id);
 
   const handleEditExpense = () => {
     // TODO: Implement edit expense functionality
@@ -73,6 +76,12 @@ export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             <Text style={styles.detailValue}>{group.name}</Text>
           </View>
           <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Added by:</Text>
+            <Text style={styles.detailValue}>
+              {creatorDisplayName ?? 'Unknown'}
+            </Text>
+          </View>
+          <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Created:</Text>
             <Text style={styles.detailValue}>
               {new Date(expense.created_at).toLocaleDateString()}
@@ -83,9 +92,29 @@ export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Split Breakdown</Text>
           <View style={styles.breakdownContainer}>
-            <Text style={styles.breakdownNote}>
-              Split details will be available when expense splits are implemented.
-            </Text>
+            {splitsLoading ? (
+              <ActivityIndicator />
+            ) : splitsError ? (
+              <Text style={styles.errorText}>{splitsError}</Text>
+            ) : splits.length === 0 ? (
+              <Text style={styles.breakdownNote}>No splits recorded for this expense.</Text>
+            ) : (
+              splits.map((split) => {
+                const pctValue = split.share != null
+                  ? split.share * 100
+                  : (split.amount / (expense.amount || 1)) * 100;
+                const pct = pctValue.toFixed(1);
+                return (
+                  <View key={split.id} style={styles.splitRow}>
+                    <View style={styles.splitLeft}>
+                      <Text style={styles.splitName}>{split.user?.display_name ?? 'Unknown'}</Text>
+                      <Text style={styles.splitShare}>{pct}%</Text>
+                    </View>
+                    <Text style={styles.splitAmount}>${split.amount.toFixed(2)}</Text>
+                  </View>
+                );
+              })
+            )}
           </View>
         </View>
 
@@ -201,6 +230,36 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#ff3b30',
+    textAlign: 'center',
+  },
+  splitRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
+  },
+  splitLeft: {
+    flexDirection: 'column',
+  },
+  splitName: {
+    fontSize: 16,
+    color: '#1a1a1a',
+    fontWeight: '500',
+  },
+  splitShare: {
+    fontSize: 12,
+    color: '#666',
+  },
+  splitAmount: {
+    fontSize: 16,
+    color: '#1a1a1a',
+    fontWeight: '600',
   },
   actionButton: {
     backgroundColor: '#007AFF',

@@ -126,6 +126,7 @@ serve(async (req) => {
         user_id: profile.id,  // profiles.id
         group_id: group.id,
         role: "admin",
+        authenticated: true, // creator is an authenticated user
       })
       .select("*")
       .single();

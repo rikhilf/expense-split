@@ -40,7 +40,8 @@ describe('useMembers', () => {
   id,
   role,
   user_id,
-  user:profiles ( id, display_name, email, avatar_url, auth_user_id )
+  authenticated,
+  user:profiles ( id, display_name, email, avatar_url )
 `);
     expect(eq).toHaveBeenCalledWith('group_id', 'g1');
     expect(returns).toHaveBeenCalled();
