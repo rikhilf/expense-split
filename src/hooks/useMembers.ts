@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Database } from '../types/database.types';
+import { useProfile } from '../contexts/ProfileContext';
 
 type MemberRow = {
   id: string;
@@ -11,6 +12,7 @@ type MemberRow = {
     display_name: string;
     email: string | null;
     avatar_url: string | null;
+    auth_user_id: string | null;
   } | null;
 };
 
@@ -28,6 +30,13 @@ export const useMembers = (groupId: string) => {
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { profileId } = useProfile();
+
+  const isCurrentUserAdmin = useMemo(() => {
+    if (!profileId) return false;
+    const me = members.find(m => m.user_id === profileId);
+    return me?.role === 'admin';
+  }, [members, profileId]);
 
   const fetchMembers = async () => {
     if (!groupId) return;
@@ -41,7 +50,7 @@ export const useMembers = (groupId: string) => {
   id,
   role,
   user_id,
-  user:profiles ( id, display_name, email, avatar_url )
+  user:profiles ( id, display_name, email, avatar_url, auth_user_id )
 `)
         .eq('group_id', groupId)
         .returns<MemberRow[]>();
@@ -125,6 +134,45 @@ export const useMembers = (groupId: string) => {
     try {
       setError(null);
 
+      // Find the target membership info from local state
+      const target = members.find(m => m.id === membershipId);
+      if (!target) {
+        setError('Could not find that member in this group.');
+        return false;
+      }
+
+      const isPlaceholder = !target.user?.auth_user_id;
+
+      // Check permissions: non-admins can only remove placeholder profiles
+      if (!isCurrentUserAdmin && !isPlaceholder) {
+        setError('Only a group admin can remove this group member');
+        return false;
+      }
+
+      // Before deleting the membership, remove any expense_splits for this user within this group
+      const { data: groupExpenses, error: expensesError } = await supabase
+        .from('expenses')
+        .select('id')
+        .eq('group_id', groupId);
+      if (expensesError) {
+        setError(expensesError.message ?? 'Failed to look up group expenses');
+        return false;
+      }
+
+      const expenseIds = (groupExpenses ?? []).map(e => e.id);
+      if (expenseIds.length > 0) {
+        const { error: deleteSplitsError } = await supabase
+          .from('expense_splits')
+          .delete()
+          .eq('user_id', target.user_id)
+          .in('expense_id', expenseIds);
+        if (deleteSplitsError) {
+          setError(deleteSplitsError.message ?? 'Failed to remove member splits');
+          return false;
+        }
+      }
+
+      // Now delete the membership itself
       const { error: deleteError } = await supabase
         .from('memberships')
         .delete()
@@ -132,6 +180,7 @@ export const useMembers = (groupId: string) => {
 
       if (deleteError) {
         setError(deleteError.message);
+        console.error('Failed to delete membership:', deleteError);
         return false;
       }
 
@@ -155,5 +204,6 @@ export const useMembers = (groupId: string) => {
     refetch: fetchMembers,
     inviteMember,
     removeMember,
+    isCurrentUserAdmin,
   };
 };
