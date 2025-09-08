@@ -1,6 +1,10 @@
 import { renderHook, act } from '@testing-library/react';
 import { useMembers } from '../useMembers';
 
+jest.mock('../../contexts/ProfileContext', () => ({
+  useProfile: jest.fn(),
+}));
+
 jest.mock('../../lib/supabase', () => ({
   supabase: {
     from: jest.fn(),
@@ -9,6 +13,7 @@ jest.mock('../../lib/supabase', () => ({
 }));
 
 import { supabase } from '../../lib/supabase';
+import { useProfile } from '../../contexts/ProfileContext';
 
 describe('useMembers', () => {
   beforeEach(() => {
@@ -16,6 +21,7 @@ describe('useMembers', () => {
   });
 
   it('fetches members for a group', async () => {
+    (useProfile as jest.Mock).mockReturnValue({ profileId: 'p-self', profile: { id: 'p-self' }, loading: false, error: null, refresh: jest.fn(), reset: jest.fn() });
     const data = [{ id: 'm1', user: { display_name: 'Test', email: 'test@example.com' } }];
     const returns = jest.fn().mockResolvedValue({ data, error: null });
     const eq = jest.fn(() => ({ returns }));
@@ -34,13 +40,14 @@ describe('useMembers', () => {
   id,
   role,
   user_id,
-  user:profiles ( id, display_name, email, avatar_url )
+  user:profiles ( id, display_name, email, avatar_url, auth_user_id )
 `);
     expect(eq).toHaveBeenCalledWith('group_id', 'g1');
     expect(returns).toHaveBeenCalled();
   });
 
   it('invites a member via edge function (email path)', async () => {
+    (useProfile as jest.Mock).mockReturnValue({ profileId: 'p-self', profile: { id: 'p-self' }, loading: false, error: null, refresh: jest.fn(), reset: jest.fn() });
     const fetchReturns = jest.fn().mockResolvedValue({ data: [], error: null });
     const fetchEq = jest.fn(() => ({ returns: fetchReturns }));
     const fetchSelect = jest.fn(() => ({ eq: fetchEq }));
@@ -77,6 +84,7 @@ describe('useMembers', () => {
   });
 
   it('invites a placeholder member via edge function (name only)', async () => {
+    (useProfile as jest.Mock).mockReturnValue({ profileId: 'p-self', profile: { id: 'p-self' }, loading: false, error: null, refresh: jest.fn(), reset: jest.fn() });
     const fetchReturns = jest.fn().mockResolvedValue({ data: [], error: null });
     const fetchEq = jest.fn(() => ({ returns: fetchReturns }));
     const fetchSelect = jest.fn(() => ({ eq: fetchEq }));

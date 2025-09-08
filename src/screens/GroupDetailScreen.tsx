@@ -17,6 +17,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useExpenses } from '../hooks/useExpenses';
 import { useMembers } from '../hooks/useMembers';
 import { Group, Expense } from '../types/db';
+import { useProfile } from '../contexts/ProfileContext';
 
 interface Props {
   navigation: any;
@@ -37,7 +38,9 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
     refetch: refetchMembers,
     inviteMember,
     removeMember,
+    isCurrentUserAdmin,
   } = useMembers(group.id);
+  const { profileId } = useProfile();
   const [activeTab, setActiveTab] = useState<'expenses' | 'members'>('expenses');
   const [refreshing, setRefreshing] = useState(false);
   const hasRefetchedRef = useRef(false);
@@ -112,7 +115,16 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   const handleRemoveMember = (membershipId: string) => {
-    Alert.alert('Remove Member', 'Are you sure you want to remove this member?', [
+    const target = members.find(m => m.id === membershipId);
+    const name = target?.user?.display_name ?? 'this member';
+    const adminWarning =
+      'Removing this member will also remove their expense splits from all expenses in this group. This may change totals.';
+
+    const message = isCurrentUserAdmin
+      ? `${adminWarning}\n\nProceed to remove ${name}?`
+      : 'Are you sure you want to remove this placeholder member?';
+
+    Alert.alert('Remove Member', message, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
@@ -204,17 +216,36 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
 
     return (
       <View style={styles.membersList}>
-        {members.map((member) => (
-          <View key={member.id} style={styles.memberItem}>
-            <Text style={styles.memberEmail}>{member.user?.display_name || member.user_id}</Text>
-            <TouchableOpacity
-              style={styles.removeButton}
-              onPress={() => handleRemoveMember(member.id)}
-            >
-              <Text style={styles.removeButtonText}>Remove</Text>
-            </TouchableOpacity>
-          </View>
-        ))}
+        {members.map((member) => {
+          const isPlaceholder = !member.user?.auth_user_id;
+          const canRemove = isCurrentUserAdmin || isPlaceholder;
+          const isYou = profileId === member.user_id;
+          return (
+            <View key={member.id} style={styles.memberItem}>
+              <View style={styles.memberLeft}>
+                <Text style={styles.memberEmail}>{member.user?.display_name || member.user_id}</Text>
+                {member.role === 'admin' && (
+                  <View style={styles.adminBadge}>
+                    <Text style={styles.adminBadgeText}>Admin</Text>
+                  </View>
+                )}
+                {isYou && (
+                  <View style={styles.youBadge}>
+                    <Text style={styles.youBadgeText}>You</Text>
+                  </View>
+                )}
+              </View>
+              {canRemove && (
+                <TouchableOpacity
+                  style={styles.removeButton}
+                  onPress={() => handleRemoveMember(member.id)}
+                >
+                  <Text style={styles.removeButtonText}>Remove</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          );
+        })}
       </View>
     );
   };
@@ -616,6 +647,37 @@ const styles = StyleSheet.create({
   memberEmail: {
     fontSize: 16,
     color: '#1a1a1a',
+  },
+  memberLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  adminBadge: {
+    backgroundColor: '#E8F0FE',
+    borderColor: '#3578E5',
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  adminBadgeText: {
+    color: '#1B66CA',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  youBadge: {
+    backgroundColor: '#F2F2F7',
+    borderColor: '#C7C7CC',
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  youBadgeText: {
+    color: '#3A3A3C',
+    fontSize: 12,
+    fontWeight: '700',
   },
   removeButton: {
     backgroundColor: '#ff3b30',
