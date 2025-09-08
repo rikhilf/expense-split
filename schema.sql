@@ -27,6 +27,7 @@ create table memberships (
   user_id uuid not null references profiles(id),
   group_id uuid not null references groups(id),
   role text not null default 'member',
+  authenticated boolean not null default false,
   joined_at timestamptz default timezone('utc', now()),
   unique (user_id, group_id)
 );

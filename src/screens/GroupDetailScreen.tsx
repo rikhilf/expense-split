@@ -84,7 +84,8 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   const handleExpensePress = (expense: Expense) => {
-    navigation.navigate('ExpenseDetail', { expense, group });
+    const creatorDisplayName = members.find(m => m.user_id === expense.created_by)?.user?.display_name ?? null;
+    navigation.navigate('ExpenseDetail', { expense, group, creatorDisplayName });
   };
 
   const handleAddMember = () => {
@@ -217,7 +218,7 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
     return (
       <View style={styles.membersList}>
         {members.map((member) => {
-          const isPlaceholder = !member.user?.auth_user_id;
+          const isPlaceholder = !member.authenticated;
           const canRemove = isCurrentUserAdmin || isPlaceholder;
           const isYou = profileId === member.user_id;
           return (

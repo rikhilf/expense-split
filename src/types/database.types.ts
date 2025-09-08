@@ -200,6 +200,7 @@ export type Database = {
           id: string
           joined_at: string | null
           role: string
+          authenticated: boolean
           user_id: string
         }
         Insert: {
@@ -207,6 +208,7 @@ export type Database = {
           id?: string
           joined_at?: string | null
           role?: string
+          authenticated?: boolean
           user_id: string
         }
         Update: {
@@ -214,6 +216,7 @@ export type Database = {
           id?: string
           joined_at?: string | null
           role?: string
+          authenticated?: boolean
           user_id?: string
         }
         Relationships: [

@@ -205,13 +205,15 @@ serve(async (req) => {
       });
     }
 
-    // Insert membership
+    // Insert membership; authenticated = true if target profile is linked to an auth user
+    const isAuthenticated = !!targetProfile.auth_user_id;
     const { data: membership, error: memErr } = await admin
       .from("memberships")
       .insert({
         group_id,
         user_id: targetProfile.id,   // profiles.id
         role: requestedRole,
+        authenticated: isAuthenticated,
       })
       .select("*")
       .single();
