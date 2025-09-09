@@ -91,6 +91,10 @@ export const useAddExpense = () => {
         }));
       } else if (expenseData.splitMode === 'shares' && expenseData.shares) {
         const totalShares = expenseData.shares.reduce((sum, share) => sum + share.share, 0);
+        if (!totalShares || totalShares <= 0) {
+          setError('Total shares must be greater than zero');
+          return null;
+        }
         
         splits = expenseData.shares.map(share => ({
           expense_id: expense.id,
