@@ -31,7 +31,7 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [splitMode, setSplitMode] = useState<SplitMode>('equal');
-  const [showSuccess, setShowSuccess] = useState(false);
+  // Removed success timer UI in favor of immediate navigation + toast/flash
 
   const handleAmountChange = (text: string) => {
     // Allow digits and a single decimal point
@@ -74,13 +74,8 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
       });
 
       if (expense) {
-        console.log('expense', expense);
-        
-        // Show success message and navigate back after a short delay
-        setShowSuccess(true);
-        setTimeout(() => {
-          navigation.goBack();
-        }, 1500); // 1.5 second delay
+        // Navigate back to Group Detail with a cross-platform flash message
+        navigation.navigate('GroupDetail', { group, flash: 'Expense created' });
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to add expense');
@@ -176,12 +171,7 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
               </View>
             )}
 
-            {showSuccess && (
-              <View style={styles.successContainer}>
-                <Text style={styles.successText}>Expense added successfully!</Text>
-                <Text style={styles.successSubtext}>Navigating back...</Text>
-              </View>
-            )}
+            {/* Success UI removed; feedback shown via toast/flash on previous screen */}
 
             <TouchableOpacity
               style={[styles.button, styles.primaryButton]}

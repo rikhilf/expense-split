@@ -8,7 +8,7 @@ export type AuthStackParamList = {
 export type AppStackParamList = {
   GroupList: undefined;
   CreateGroup: undefined;
-  GroupDetail: { group: Group };
+  GroupDetail: { group: Group; flash?: string };
   AddExpense: { group: Group };
   ExpenseDetail: { expense: Expense; group: Group };
 };
