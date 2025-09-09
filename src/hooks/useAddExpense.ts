@@ -11,6 +11,8 @@ export type AddExpenseData = {
   date: string;
   splitMode: SplitMode;
   shares?: { userId: string; share: number }[];
+  // Optional: restrict the split to these user ids
+  participantIds?: string[];
 };
 
 export const useAddExpense = () => {
@@ -64,14 +66,24 @@ export const useAddExpense = () => {
         return null;
       }
 
+      // Apply participant filter if provided
+      const selectedMemberships = expenseData.participantIds && expenseData.participantIds.length > 0
+        ? memberships.filter(m => expenseData.participantIds!.includes(m.user_id))
+        : memberships;
+
+      if (!selectedMemberships || selectedMemberships.length === 0) {
+        setError('At least one participant must be selected');
+        return null;
+      }
+
       // Calculate splits
       let splits: ExpenseSplitInsert[] = [];
       
       if (expenseData.splitMode === 'equal') {
-        const memberCount = memberships.length;
+        const memberCount = selectedMemberships.length;
         const shareAmount = expenseData.amount / memberCount;
         
-        splits = memberships.map(membership => ({
+        splits = selectedMemberships.map(membership => ({
           expense_id: expense.id,
           user_id: membership.user_id,
           share: 1 / memberCount,

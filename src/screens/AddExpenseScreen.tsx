@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useAddExpense, SplitMode } from '../hooks/useAddExpense';
 import { Group } from '../types/db';
+import { useMembers } from '../hooks/useMembers';
 
 interface Props {
   navigation: any;
@@ -26,12 +27,30 @@ interface Props {
 export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
   const { group } = route.params;
   const { addExpense, loading, error } = useAddExpense();
+  const { members, loading: membersLoading, error: membersError } = useMembers(group.id);
   
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [splitMode, setSplitMode] = useState<SplitMode>('equal');
+  const [selectedMap, setSelectedMap] = useState<Record<string, boolean>>({});
   // Removed success timer UI in favor of immediate navigation + toast/flash
+
+  // Initialize selection to all members once members load
+  useEffect(() => {
+    if ((members?.length ?? 0) > 0 && Object.keys(selectedMap).length === 0) {
+      const init: Record<string, boolean> = {};
+      members.forEach(m => {
+        init[m.user_id] = true;
+      });
+      setSelectedMap(init);
+    }
+  }, [members]);
+
+  const selectedIds = useMemo(
+    () => Object.keys(selectedMap).filter(id => selectedMap[id]),
+    [selectedMap]
+  );
 
   const handleAmountChange = (text: string) => {
     // Allow digits and a single decimal point
@@ -59,6 +78,11 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
       return;
     }
 
+    if (selectedIds.length === 0) {
+      Alert.alert('Error', 'Please select at least one participant');
+      return;
+    }
+
     const numericAmount = parseFloat(amount);
     if (isNaN(numericAmount) || numericAmount <= 0) {
       Alert.alert('Error', 'Please enter a valid amount');
@@ -71,6 +95,7 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
         amount: numericAmount,
         date,
         splitMode,
+        participantIds: selectedIds,
       });
 
       if (expense) {
@@ -164,6 +189,62 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
                 </Text>
               </View>
             )}
+
+            <Text style={styles.label}>Participants</Text>
+            <View style={styles.selectAllRow}>
+              <Text style={styles.selectedCountText}>
+                Selected: {selectedIds.length} of {(members ?? []).length}
+              </Text>
+              <View style={styles.selectButtonsRow}>
+                <TouchableOpacity
+                  style={[styles.smallButton, styles.smallButtonPrimary]}
+                  onPress={() => {
+                    const all: Record<string, boolean> = {};
+                    members.forEach(m => (all[m.user_id] = true));
+                    setSelectedMap(all);
+                  }}
+                  disabled={membersLoading}
+                >
+                  <Text style={styles.smallButtonText}>Select All</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.smallButton, styles.smallButtonGhost, styles.smallButtonMarginLeft]}
+                  onPress={() => {
+                    const none: Record<string, boolean> = {};
+                    members.forEach(m => (none[m.user_id] = false));
+                    setSelectedMap(none);
+                  }}
+                  disabled={membersLoading}
+                >
+                  <Text style={styles.smallButtonGhostText}>Deselect All</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {membersError && (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{membersError}</Text>
+              </View>
+            )}
+
+            <View style={styles.membersList}>
+              {(members ?? []).map(member => (
+                <View key={member.user_id} style={styles.memberRow}>
+                  <Text style={styles.memberName}>
+                    {member.user?.display_name || 'Member'}
+                  </Text>
+                  <Switch
+                    value={!!selectedMap[member.user_id]}
+                    onValueChange={(val) =>
+                      setSelectedMap(prev => ({ ...prev, [member.user_id]: val }))
+                    }
+                  />
+                </View>
+              ))}
+              {membersLoading && (
+                <Text style={styles.membersLoadingText}>Loading members…</Text>
+              )}
+            </View>
 
             {error && (
               <View style={styles.errorContainer}>
@@ -346,5 +427,72 @@ const styles = StyleSheet.create({
     color: '#155724',
     textAlign: 'center',
     marginTop: 4,
+  },
+  selectAllRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  selectButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  smallButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  smallButtonMarginLeft: {
+    marginLeft: 8,
+  },
+  smallButtonPrimary: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  smallButtonGhost: {
+    backgroundColor: 'transparent',
+    borderColor: '#e1e5e9',
+  },
+  smallButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  smallButtonGhostText: {
+    color: '#666',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  selectedCountText: {
+    color: '#1a1a1a',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  membersList: {
+    borderWidth: 1,
+    borderColor: '#e1e5e9',
+    borderRadius: 8,
+    paddingVertical: 4,
+    marginBottom: 20,
+  },
+  memberRow: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f2f4',
+  },
+  memberName: {
+    fontSize: 16,
+    color: '#1a1a1a',
+  },
+  membersLoadingText: {
+    textAlign: 'center',
+    color: '#666',
+    padding: 8,
   },
 }); 
