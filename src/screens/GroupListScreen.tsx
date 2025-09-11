@@ -10,7 +10,8 @@ import {
   Animated,
   Easing,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect, useRoute } from '@react-navigation/native';
 import { useGroups } from '../hooks/useGroups';
 import { Group } from '../types/db';
 
@@ -18,33 +19,78 @@ interface Props {
   navigation: any;
 }
 
+const GROUPS_CACHE_KEY = 'groups_cache_v1';
+const STALE_MS = 60_000; // 1 minute staleness window
+
 export const GroupListScreen: React.FC<Props> = ({ navigation }) => {
   const { groups, loading, error, refetch } = useGroups();
+  const route = useRoute<any>();
+  const [displayGroups, setDisplayGroups] = useState<Group[]>([]);
+  const [hydratedFromCache, setHydratedFromCache] = useState(false);
+  const lastFetchRef = useRef<number>(0);
   const [refreshing, setRefreshing] = useState(false);
-  const hasRefetchedRef = useRef(false);
 
-  // Auto-refresh when screen comes into focus (e.g., returning from CreateGroup)
   useFocusEffect(
     React.useCallback(() => {
-      if (!hasRefetchedRef.current) {
-        hasRefetchedRef.current = true;
-        refetch();
+      // If a child screen requested an invalidate, force a refetch and clear the flag.
+      // Example usage from a child: navigation.navigate('GroupList', { invalidate: true })
+      // or navigation.setParams({ invalidate: true }) before goBack().
+      // We clear the flag here to avoid loops.
+      // @ts-ignore - route params may be undefined
+      const shouldInvalidate = (route as any)?.params?.invalidate;
+      if (shouldInvalidate) {
+        refetch().finally(() => {
+          lastFetchRef.current = Date.now();
+          // Clear the flag
+          // @ts-ignore
+          navigation.setParams({ invalidate: undefined });
+        });
+        return;
       }
-    }, [refetch])
+      const now = Date.now();
+      const isStale = now - lastFetchRef.current > STALE_MS;
+      // Only refetch when we have no data to show OR when cache is stale
+      if (displayGroups.length === 0 || isStale) {
+        refetch().finally(() => {
+          lastFetchRef.current = Date.now();
+        });
+      }
+    }, [displayGroups.length, refetch, navigation, route])
   );
 
-  // Reset the ref when the screen loses focus
-  useFocusEffect(
-    React.useCallback(() => {
-      return () => {
-        hasRefetchedRef.current = false;
-      };
-    }, [])
-  );
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(GROUPS_CACHE_KEY);
+        if (raw) {
+          const cached: Group[] = JSON.parse(raw);
+          if (Array.isArray(cached) && cached.length > 0) {
+            setDisplayGroups(cached);
+          }
+        }
+      } catch (e) {
+        // ignore cache errors
+      } finally {
+        setHydratedFromCache(true);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (groups && groups.length > 0) {
+      setDisplayGroups(groups);
+      AsyncStorage.setItem(GROUPS_CACHE_KEY, JSON.stringify(groups)).catch(() => {});
+    } else if (!loading && hydratedFromCache && groups.length === 0) {
+      // if server says empty and we were showing cache, reflect it (avoid clearing while a fetch is in-flight)
+      setDisplayGroups([]);
+      AsyncStorage.removeItem(GROUPS_CACHE_KEY).catch(() => {});
+    }
+  }, [groups, loading, hydratedFromCache]);
 
   const onRefresh = async () => {
     setRefreshing(true);
     await refetch();
+    lastFetchRef.current = Date.now();
     setRefreshing(false);
   };
 
@@ -72,13 +118,18 @@ export const GroupListScreen: React.FC<Props> = ({ navigation }) => {
   );
 
   const renderContent = () => {
-    // if (loading && !refreshing) {
-    //   return (
-    //     <View style={styles.centerContainer}>
-    //       <Text style={styles.loadingText}>Loading groups...</Text>
-    //     </View>
-    //   );
-    // }
+    if ((loading && displayGroups.length === 0) || (!hydratedFromCache && displayGroups.length === 0)) {
+      return (
+        <View style={styles.groupsList}>
+          {[0,1,2].map((i) => (
+            <View key={i} style={styles.skeletonCard}>
+              <View style={styles.skeletonTitle} />
+              <View style={styles.skeletonSubtitle} />
+            </View>
+          ))}
+        </View>
+      );
+    }
 
     if (error) {
       return (
@@ -91,7 +142,7 @@ export const GroupListScreen: React.FC<Props> = ({ navigation }) => {
       );
     }
 
-    if (groups.length === 0) {
+    if (displayGroups.length === 0 && !loading) {
       return (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyTitle}>No groups yet</Text>
@@ -107,7 +158,7 @@ export const GroupListScreen: React.FC<Props> = ({ navigation }) => {
 
     return (
       <View style={styles.groupsList}>
-        {groups.map((group) => (
+        {displayGroups.map((group) => (
           <View key={group.id}>
             {renderGroupItem(group)}
           </View>
@@ -120,7 +171,7 @@ export const GroupListScreen: React.FC<Props> = ({ navigation }) => {
   const loadingBarAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (loading && groups.length > 0) {
+    if (loading && displayGroups.length > 0) {
       loadingBarAnim.setValue(0);
       Animated.loop(
         Animated.timing(loadingBarAnim, {
@@ -135,7 +186,7 @@ export const GroupListScreen: React.FC<Props> = ({ navigation }) => {
       loadingBarAnim.setValue(0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, groups.length]);
+  }, [loading, displayGroups.length]);
 
   const barWidth = loadingBarAnim.interpolate({
     inputRange: [0, 1],
@@ -145,7 +196,7 @@ export const GroupListScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <View style={styles.container}>
       {/* Animated loading bar (only when refetching) */}
-      {loading && groups.length > 0 && (
+      {loading && displayGroups.length > 0 && (
         <View style={styles.loadingBarContainer}>
           <Animated.View
             style={[
@@ -320,4 +371,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-}); 
+  skeletonCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  skeletonTitle: {
+    height: 18,
+    backgroundColor: '#e9ecef',
+    borderRadius: 6,
+    marginBottom: 8,
+    width: '60%',
+  },
+  skeletonSubtitle: {
+    height: 14,
+    backgroundColor: '#f0f2f4',
+    borderRadius: 6,
+    width: '40%',
+  },
+});

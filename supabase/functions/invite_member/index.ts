@@ -99,7 +99,7 @@ serve(async (req) => {
     // Resolve caller's profile (profiles.id) and membership in target group
     const { data: callerProfile, error: profErr } = await admin
       .from("profiles")
-      .select("id, auth_user_id, display_name, email")
+      .select("id, auth_user_id, display_name, email, venmo_username, cashapp_username, paypal_username")
       .eq("auth_user_id", caller.id)
       .single();
 
@@ -127,7 +127,7 @@ serve(async (req) => {
     if (body.profile_id) {
       const { data: p, error } = await admin
         .from("profiles")
-        .select("id, auth_user_id, display_name, email")
+        .select("id, auth_user_id, display_name, email, venmo_username, cashapp_username, paypal_username")
         .eq("id", body.profile_id)
         .single();
       if (error || !p) return badRequest("Invalid 'profile_id'");
@@ -137,7 +137,7 @@ serve(async (req) => {
       const email = body.email.trim().toLowerCase();
       const { data: p, error } = await admin
         .from("profiles")
-        .select("id, auth_user_id, display_name, email")
+        .select("id, auth_user_id, display_name, email, venmo_username, cashapp_username, paypal_username")
         .eq("email", email)
         .maybeSingle();
 
@@ -157,8 +157,11 @@ serve(async (req) => {
             display_name,
             email,
             avatar_url: null,
+            venmo_username: null,
+            cashapp_username: null,
+            paypal_username: null,
           })
-          .select("id, auth_user_id, display_name, email")
+          .select("id, auth_user_id, display_name, email, venmo_username, cashapp_username, paypal_username")
           .single();
 
         if (insErr) return json({ error: "Failed to create placeholder profile" }, { status: 500 });
@@ -176,8 +179,11 @@ serve(async (req) => {
           display_name,
           email: null,
           avatar_url: null,
+          venmo_username: null,
+          cashapp_username: null,
+          paypal_username: null,
         })
-        .select("id, auth_user_id, display_name, email")
+        .select("id, auth_user_id, display_name, email, venmo_username, cashapp_username, paypal_username")
         .single();
 
       if (insErr || !inserted) return json({ error: "Failed to create placeholder profile" }, { status: 500 });

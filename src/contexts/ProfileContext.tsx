@@ -7,6 +7,9 @@ export type Profile = {
   display_name: string;
   email: string | null;
   avatar_url?: string | null;
+  venmo_username?: string | null;
+  cashapp_username?: string | null;
+  paypal_username?: string | null;
 };
 
 type ProfileContextValue = {
@@ -36,7 +39,7 @@ async function ensureProfile(): Promise<Profile | null> {
     // Try existing profile
     const { data: existing, error: getErr } = await supabase
       .from('profiles')
-      .select('id, auth_user_id, display_name, email, avatar_url')
+      .select('*')
       .eq('auth_user_id', user.id)
       .maybeSingle();
 
@@ -58,8 +61,11 @@ async function ensureProfile(): Promise<Profile | null> {
         auth_user_id: user.id,
         display_name: displayName,
         email: typeof user.email === 'string' ? user.email : null,
+        venmo_username: null,
+        cashapp_username: null,
+        paypal_username: null,
       })
-      .select('id, auth_user_id, display_name, email, avatar_url')
+      .select('*')
       .single();
 
     if (createErr || !created) {
