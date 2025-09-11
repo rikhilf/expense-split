@@ -100,6 +100,9 @@ serve(async (req) => {
           display_name: display,
           email: u.email ?? null,
           avatar_url: (u.user_metadata?.avatar_url as string) ?? null,
+          venmo_username: null,
+          cashapp_username: null,
+          paypal_username: null,
         })
         .select("*")
         .single();

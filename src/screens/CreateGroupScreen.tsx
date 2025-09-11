@@ -34,7 +34,7 @@ export const CreateGroupScreen: React.FC<Props> = ({ navigation }) => {
       setLoading(true);
       const created = await createGroup(groupName.trim());
       if (created) {
-        navigation.goBack();
+        navigation.navigate('GroupList', { invalidate: true });
       } else {
         setSnackbarMessage('Failed to create group');
         setSnackbarVisible(true);

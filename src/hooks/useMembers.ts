@@ -143,9 +143,13 @@ export const useMembers = (groupId: string) => {
       }
 
       const isPlaceholder = !target.authenticated;
+      const isSelf = target.user_id === profileId;
 
-      // Check permissions: non-admins can only remove placeholder profiles
-      if (!isCurrentUserAdmin && !isPlaceholder) {
+      // Permissions:
+      // - Admins can remove anyone
+      // - Non-admins can remove placeholders
+      // - Anyone can remove themselves (leave group)
+      if (!isCurrentUserAdmin && !isPlaceholder && !isSelf) {
         setError('Only a group admin can remove this group member');
         return false;
       }

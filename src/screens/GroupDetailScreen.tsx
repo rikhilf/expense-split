@@ -148,22 +148,42 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
 
   const handleRemoveMember = (membershipId: string) => {
     const target = members.find(m => m.id === membershipId);
+    const isYou = target?.user_id === profileId;
     const name = target?.user?.display_name ?? 'this member';
-    const adminWarning =
-      'Removing this member will also remove their expense splits from all expenses in this group. This may change totals.';
 
-    const message = isCurrentUserAdmin
-      ? `${adminWarning}\n\nProceed to remove ${name}?`
-      : 'Are you sure you want to remove this placeholder member?';
+    if (isYou) {
+      Alert.alert(
+        'Leave Group',
+        'Are you sure you want to leave the group?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Leave',
+            style: 'destructive',
+            onPress: async () => {
+              const ok = await removeMember(membershipId);
+              if (ok) {
+                navigation.navigate('GroupList', { invalidate: true });
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
 
-    Alert.alert('Remove Member', message, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: () => removeMember(membershipId),
-      },
-    ]);
+    Alert.alert(
+      'Remove Member',
+      'Are you sure you want to remove this member?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => void removeMember(membershipId),
+        },
+      ]
+    );
   };
 
   const renderExpenseItem = (expense: Expense) => (
@@ -250,8 +270,8 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
       <View style={styles.membersList}>
         {members.map((member) => {
           const isPlaceholder = !member.authenticated;
-          const canRemove = isCurrentUserAdmin || isPlaceholder;
           const isYou = profileId === member.user_id;
+          const canRemove = isCurrentUserAdmin || isPlaceholder || isYou;
           return (
             <View key={member.id} style={styles.memberItem}>
               <View style={styles.memberLeft}>
@@ -272,7 +292,7 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
                   style={styles.removeButton}
                   onPress={() => handleRemoveMember(member.id)}
                 >
-                  <Text style={styles.removeButtonText}>Remove</Text>
+                  <Text style={styles.removeButtonText}>{isYou ? 'Leave' : 'Remove'}</Text>
                 </TouchableOpacity>
               )}
             </View>

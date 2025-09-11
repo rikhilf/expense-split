@@ -8,6 +8,9 @@ create table profiles (
   display_name text not null,
   email text,
   avatar_url text,
+  venmo_username text, -- optional handle for Venmo
+  cashapp_username text, -- optional handle for Cash App
+  paypal_username text, -- optional handle for PayPal
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
