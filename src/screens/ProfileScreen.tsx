@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import { useProfile } from '../contexts/ProfileContext';
 import { supabase } from '../lib/supabase';
+import { useNavigation } from '@react-navigation/native';
 
 export const ProfileScreen: React.FC = () => {
   const { profile, loading: profileLoading, refresh } = useProfile();
@@ -10,6 +11,8 @@ export const ProfileScreen: React.FC = () => {
   const [cashapp, setCashapp] = useState('');
   const [paypal, setPaypal] = useState('');
   const [saving, setSaving] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const navigation = useNavigation();
 
   useEffect(() => {
     if (profile) {
@@ -19,6 +22,47 @@ export const ProfileScreen: React.FC = () => {
       setPaypal((profile.paypal_username as string) || '');
     }
   }, [profile]);
+
+  const dirty = useMemo(() => {
+    if (!profile) return false;
+    const n = displayName.trim();
+    const v = venmo.trim();
+    const c = cashapp.trim();
+    const p = paypal.trim();
+    return (
+      n !== (profile.display_name || '') ||
+      v !== ((profile.venmo_username as string) || '') ||
+      c !== ((profile.cashapp_username as string) || '') ||
+      p !== ((profile.paypal_username as string) || '')
+    );
+  }, [profile, displayName, venmo, cashapp, paypal]);
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => {
+            if (editMode) {
+              // Cancel edits -> reset to profile values
+              if (profile) {
+                setDisplayName(profile.display_name || '');
+                setVenmo((profile.venmo_username as string) || '');
+                setCashapp((profile.cashapp_username as string) || '');
+                setPaypal((profile.paypal_username as string) || '');
+              }
+              setEditMode(false);
+            } else {
+              setEditMode(true);
+            }
+          }}
+          style={styles.headerAction}
+        >
+          <Text style={styles.headerActionText}>{editMode ? 'Cancel' : 'Edit'}</Text>
+        </TouchableOpacity>
+      ),
+      headerTitle: 'Your Profile',
+    });
+  }, [navigation, editMode, profile]);
 
   const handleSave = async () => {
     if (!profile) return;
@@ -45,6 +89,7 @@ export const ProfileScreen: React.FC = () => {
       }
 
       await refresh();
+      setEditMode(false);
       Alert.alert('Saved', 'Your profile has been updated.');
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Failed to save changes');
@@ -74,46 +119,56 @@ export const ProfileScreen: React.FC = () => {
 
           <Text style={styles.label}>Name</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, !editMode && styles.inputDisabled]}
             value={displayName}
             onChangeText={setDisplayName}
             placeholder="Your name"
             autoCapitalize="words"
+            editable={editMode}
           />
 
           <Text style={styles.label}>Venmo Username (optional)</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, !editMode && styles.inputDisabled]}
             value={venmo}
             onChangeText={setVenmo}
             placeholder="e.g. @yourname or yourname"
             autoCapitalize="none"
             autoCorrect={false}
+            editable={editMode}
           />
 
           <Text style={styles.label}>Cash App Username (optional)</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, !editMode && styles.inputDisabled]}
             value={cashapp}
             onChangeText={setCashapp}
             placeholder="e.g. $yourname or yourname"
             autoCapitalize="none"
             autoCorrect={false}
+            editable={editMode}
           />
 
           <Text style={styles.label}>PayPal Username (optional)</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, !editMode && styles.inputDisabled]}
             value={paypal}
             onChangeText={setPaypal}
             placeholder="e.g. yourname"
             autoCapitalize="none"
             autoCorrect={false}
+            editable={editMode}
           />
 
-          <TouchableOpacity style={[styles.button, saving ? styles.buttonDisabled : styles.primaryButton]} onPress={handleSave} disabled={saving}>
-            <Text style={styles.buttonText}>{saving ? 'Saving…' : 'Save Changes'}</Text>
-          </TouchableOpacity>
+          {editMode && dirty && (
+            <TouchableOpacity
+              style={[styles.button, saving ? styles.buttonDisabled : styles.primaryButton]}
+              onPress={handleSave}
+              disabled={saving}
+            >
+              <Text style={styles.buttonText}>{saving ? 'Saving…' : 'Save Changes'}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -150,6 +205,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 12,
   },
+  inputDisabled: {
+    backgroundColor: '#f7f8fa',
+  },
   button: {
     marginTop: 20,
     borderRadius: 8,
@@ -159,4 +217,6 @@ const styles = StyleSheet.create({
   primaryButton: { backgroundColor: '#007AFF' },
   buttonDisabled: { backgroundColor: '#A7C8FF' },
   buttonText: { color: '#fff', fontWeight: '700' },
+  headerAction: { paddingHorizontal: 12, paddingVertical: 8 },
+  headerActionText: { color: '#007AFF', fontWeight: '700' },
 });
