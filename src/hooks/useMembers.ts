@@ -13,6 +13,9 @@ type MemberRow = {
     display_name: string;
     email: string | null;
     avatar_url: string | null;
+    venmo_username?: string | null;
+    cashapp_username?: string | null;
+    paypal_username?: string | null;
   } | null;
 };
 
@@ -51,7 +54,7 @@ export const useMembers = (groupId: string) => {
   role,
   user_id,
   authenticated,
-  user:profiles ( id, display_name, email, avatar_url )
+  user:profiles ( id, display_name, email, avatar_url, venmo_username, cashapp_username, paypal_username )
 `)
         .eq('group_id', groupId)
         .returns<MemberRow[]>();

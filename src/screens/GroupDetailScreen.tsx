@@ -53,14 +53,20 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const [inviteEmail, setInviteEmail] = useState('');
   const [submittingInvite, setSubmittingInvite] = useState(false);
 
-  // Auto-refresh when screen comes into focus (e.g., returning from AddExpense)
+  // Auto-refresh when screen comes into focus (e.g., returning from other screens)
   useFocusEffect(
     React.useCallback(() => {
-      if (activeTab === 'expenses' && !hasRefetchedRef.current) {
-        hasRefetchedRef.current = true;
-        refetch();
+      // Always refresh the currently active tab when focusing
+      if (activeTab === 'expenses') {
+        if (!hasRefetchedRef.current) {
+          hasRefetchedRef.current = true;
+          refetch();
+        }
+      } else if (activeTab === 'members') {
+        // ensure latest profile details (e.g., after editing placeholder)
+        refetchMembers();
       }
-    }, [activeTab, refetch])
+    }, [activeTab, refetch, refetchMembers])
   );
 
   // Reset the ref when the screen loses focus
@@ -286,14 +292,42 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
                     <Text style={styles.youBadgeText}>You</Text>
                   </View>
                 )}
+                {!member.authenticated && (
+                  <View style={styles.placeholderBadge}>
+                    <Text style={styles.placeholderBadgeText}>Placeholder</Text>
+                  </View>
+                )}
               </View>
               {canRemove && (
-                <TouchableOpacity
-                  style={styles.removeButton}
-                  onPress={() => handleRemoveMember(member.id)}
-                >
-                  <Text style={styles.removeButtonText}>{isYou ? 'Leave' : 'Remove'}</Text>
-                </TouchableOpacity>
+                <View style={styles.memberActions}>
+                  <TouchableOpacity
+                    style={styles.viewButton}
+                    onPress={() => {
+                      if (!member.user) return;
+                      navigation.navigate('MemberProfile', {
+                        groupId: group.id,
+                        profile: {
+                          id: member.user_id,
+                          display_name: member.user.display_name,
+                          email: member.user.email,
+                          venmo_username: member.user.venmo_username as any,
+                          cashapp_username: member.user.cashapp_username as any,
+                          paypal_username: member.user.paypal_username as any,
+                          authenticated: member.authenticated,
+                        },
+                        canEdit: isCurrentUserAdmin && !member.authenticated,
+                      });
+                    }}
+                  >
+                    <Text style={styles.viewButtonText}>View Profile</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.removeButton}
+                    onPress={() => handleRemoveMember(member.id)}
+                  >
+                    <Text style={styles.removeButtonText}>{isYou ? 'Leave' : 'Remove'}</Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
           );
@@ -755,11 +789,40 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  placeholderBadge: {
+    backgroundColor: '#FFF4E5',
+    borderColor: '#FFD6A5',
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  placeholderBadgeText: {
+    color: '#7A4D00',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   removeButton: {
     backgroundColor: '#ff3b30',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
+  },
+  memberActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  viewButton: {
+    backgroundColor: '#E9EEF6',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  viewButtonText: {
+    color: '#1B66CA',
+    fontSize: 14,
+    fontWeight: '600',
   },
   removeButtonText: {
     color: '#fff',
