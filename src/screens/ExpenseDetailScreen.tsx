@@ -19,12 +19,13 @@ interface Props {
       expense: Expense;
       group: Group;
       creatorDisplayName?: string | null;
+      fromKey?: string;
     };
   };
 }
 
 export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
-  const { expense, group, creatorDisplayName } = route.params;
+  const { expense, group, creatorDisplayName, fromKey } = route.params;
   const { deleteExpense, loading: deleting, error: deleteError } = useDeleteExpense();
   const { splits, loading: splitsLoading, error: splitsError } = useExpenseSplits(expense.id);
 
@@ -46,6 +47,13 @@ export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             const success = await deleteExpense(expense.id);
             if (success) {
               navigation.goBack();
+              setTimeout(() => {
+                navigation.navigate({
+                  name: 'GroupDetail',
+                  params: { invalidate: 'expenses' as any },
+                  merge: true,
+                } as any);
+              }, 0);
             } else {
               Alert.alert('Error', deleteError || 'Failed to delete expense');
             }

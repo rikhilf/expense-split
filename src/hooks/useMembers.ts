@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useCallback, useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Database } from '../types/database.types';
 import { useProfile } from '../contexts/ProfileContext';
@@ -13,6 +13,9 @@ type MemberRow = {
     display_name: string;
     email: string | null;
     avatar_url: string | null;
+    venmo_username?: string | null;
+    cashapp_username?: string | null;
+    paypal_username?: string | null;
   } | null;
 };
 
@@ -38,7 +41,7 @@ export const useMembers = (groupId: string) => {
     return me?.role === 'admin';
   }, [members, profileId]);
 
-  const fetchMembers = async () => {
+  const fetchMembers = useCallback(async () => {
     if (!groupId) return;
     try {
       setLoading(true);
@@ -51,7 +54,7 @@ export const useMembers = (groupId: string) => {
   role,
   user_id,
   authenticated,
-  user:profiles ( id, display_name, email, avatar_url )
+  user:profiles ( id, display_name, email, avatar_url, venmo_username, cashapp_username, paypal_username )
 `)
         .eq('group_id', groupId)
         .returns<MemberRow[]>();
@@ -67,7 +70,7 @@ export const useMembers = (groupId: string) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [groupId]);
 
   const inviteMember = async ({ displayName, email }: InviteInput) => {
     try {
@@ -199,8 +202,7 @@ export const useMembers = (groupId: string) => {
 
   useEffect(() => {
     fetchMembers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupId]);
+  }, [fetchMembers]);
 
   return {
     members,

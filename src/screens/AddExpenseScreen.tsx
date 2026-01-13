@@ -9,7 +9,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Switch,
 } from 'react-native';
 import { useAddExpense, SplitMode } from '../hooks/useAddExpense';
 import { Group } from '../types/db';
@@ -20,12 +19,42 @@ interface Props {
   route: {
     params: {
       group: Group;
+      fromKey?: string;
     };
   };
 }
 
+// Utility: compute equal shares (in percentage strings with two decimals) that sum exactly to 100.00
+const computeEqualShares = (ids: string[]) => {
+  const n = ids.length;
+  if (n === 0) return {} as Record<string, string>;
+  const totalUnits = 10000; // hundredths of a percent
+  const base = Math.floor(totalUnits / n);
+  let remainder = totalUnits - base * n;
+  const result: Record<string, string> = {};
+  ids.forEach((id, idx) => {
+    const units = base + (idx < remainder ? 1 : 0);
+    result[id] = (units / 100).toFixed(2);
+  });
+  return result;
+};
+
+// Distribute remaining units (hundredths) equally among ids, summing to exactly remainderUnits
+const distributeUnits = (ids: string[], remainderUnits: number) => {
+  const n = ids.length;
+  const res: Record<string, string> = {};
+  if (n === 0) return res;
+  const base = Math.floor(remainderUnits / n);
+  let rem = remainderUnits - base * n;
+  ids.forEach((id, idx) => {
+    const units = base + (idx < rem ? 1 : 0);
+    res[id] = (units / 100).toFixed(2);
+  });
+  return res;
+};
+
 export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
-  const { group } = route.params;
+  const { group, fromKey } = route.params;
   const { addExpense, loading, error } = useAddExpense();
   const { members, loading: membersLoading, error: membersError } = useMembers(group.id);
   
@@ -63,6 +92,11 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
     return isNaN(n) ? 0 : n;
   }, [amount]);
 
+  const equalSplitAmount = useMemo(() => {
+    if (splitMode !== 'equal' || selectedIds.length === 0) return 0;
+    return amountNumber / selectedIds.length;
+  }, [splitMode, amountNumber, selectedIds.length]);
+
   // Compute totals directly to ensure live updates even mid-typing
   const computeTotals = () => {
     if (splitMode !== 'shares') {
@@ -85,35 +119,6 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
     const pct = selectedIds.reduce((sum, id) => sum + (parseFloat(sharesMap[id] ?? '0') || 0), 0);
     const dollars = (pct / 100) * amountNumber;
     return { dollars, pct };
-  };
-
-  // Utility: compute equal shares (in percentage strings with two decimals) that sum exactly to 100.00
-  const computeEqualShares = (ids: string[]) => {
-    const n = ids.length;
-    if (n === 0) return {} as Record<string, string>;
-    const totalUnits = 10000; // hundredths of a percent
-    const base = Math.floor(totalUnits / n);
-    let remainder = totalUnits - base * n;
-    const result: Record<string, string> = {};
-    ids.forEach((id, idx) => {
-      const units = base + (idx < remainder ? 1 : 0);
-      result[id] = (units / 100).toFixed(2);
-    });
-    return result;
-  };
-
-  // Distribute remaining units (hundredths) equally among ids, summing to exactly remainderUnits
-  const distributeUnits = (ids: string[], remainderUnits: number) => {
-    const n = ids.length;
-    const res: Record<string, string> = {};
-    if (n === 0) return res;
-    const base = Math.floor(remainderUnits / n);
-    let rem = remainderUnits - base * n;
-    ids.forEach((id, idx) => {
-      const units = base + (idx < rem ? 1 : 0);
-      res[id] = (units / 100).toFixed(2);
-    });
-    return res;
   };
 
   // When switching to shares mode, initialize equal distribution among selected members (unless user already edited)
@@ -218,8 +223,15 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
       });
 
       if (expense) {
-        // Navigate back to Group Detail with a cross-platform flash message
-        navigation.navigate('GroupDetail', { group, flash: 'Expense created' });
+        // Pop back to GroupDetail, then merge params to trigger refresh
+        navigation.goBack();
+        setTimeout(() => {
+          navigation.navigate({
+            name: 'GroupDetail',
+            params: { flash: 'Expense created', invalidate: 'expenses' as any },
+            merge: true,
+          } as any);
+        }, 0);
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to add expense');
@@ -424,7 +436,7 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
                       {splitMode === 'equal' && selected ? (
                         <Text style={styles.memberAmount}>
                           ${(
-                            selectedIds.length > 0 ? (amountNumber / selectedIds.length) : 0
+                            equalSplitAmount
                           ).toFixed(2)}
                         </Text>
                       ) : null}

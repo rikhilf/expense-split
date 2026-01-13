@@ -7,6 +7,7 @@ import { GroupDetailScreen } from '../screens/GroupDetailScreen';
 import { AddExpenseScreen } from '../screens/AddExpenseScreen';
 import { ExpenseDetailScreen } from '../screens/ExpenseDetailScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
+import { MemberProfileScreen } from '../screens/MemberProfileScreen';
 import { AppStackParamList } from '../types/navigation';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -46,6 +47,11 @@ const HomeStackNavigator: React.FC = () => (
       name="ExpenseDetail"
       component={ExpenseDetailScreen}
       options={{ title: 'Expense Details' }}
+    />
+    <HomeStack.Screen
+      name="MemberProfile"
+      component={MemberProfileScreen}
+      options={{ title: 'Member Profile' }}
     />
   </HomeStack.Navigator>
 );

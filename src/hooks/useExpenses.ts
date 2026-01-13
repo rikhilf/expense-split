@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Expense } from '../types/db';
 
@@ -7,7 +7,7 @@ export const useExpenses = (groupId: string) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchExpenses = async () => {
+  const fetchExpenses = useCallback(async () => {
     if (!groupId) return;
 
     try {
@@ -31,11 +31,11 @@ export const useExpenses = (groupId: string) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [groupId]);
 
   useEffect(() => {
     fetchExpenses();
-  }, [groupId]);
+  }, [fetchExpenses]);
 
   return {
     expenses,
