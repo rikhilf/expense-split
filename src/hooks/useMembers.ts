@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useCallback, useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Database } from '../types/database.types';
 import { useProfile } from '../contexts/ProfileContext';
@@ -41,7 +41,7 @@ export const useMembers = (groupId: string) => {
     return me?.role === 'admin';
   }, [members, profileId]);
 
-  const fetchMembers = async () => {
+  const fetchMembers = useCallback(async () => {
     if (!groupId) return;
     try {
       setLoading(true);
@@ -70,7 +70,7 @@ export const useMembers = (groupId: string) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [groupId]);
 
   const inviteMember = async ({ displayName, email }: InviteInput) => {
     try {
@@ -202,8 +202,7 @@ export const useMembers = (groupId: string) => {
 
   useEffect(() => {
     fetchMembers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupId]);
+  }, [fetchMembers]);
 
   return {
     members,

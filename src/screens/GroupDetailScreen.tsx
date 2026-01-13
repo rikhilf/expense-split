@@ -13,6 +13,7 @@ import {
   Alert,
 } from 'react-native';
 import React, { useState, useRef, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { useExpenses } from '../hooks/useExpenses';
 import { useMembers } from '../hooks/useMembers';
@@ -25,12 +26,19 @@ interface Props {
     params: {
       group: Group;
       flash?: string;
+      invalidate?: 'expenses' | 'members' | true;
     };
   };
 }
 
+const EXPENSES_CACHE_KEY_PREFIX = 'expenses_cache_v1:';
+const MEMBERS_CACHE_KEY_PREFIX = 'members_cache_v1:';
+const STALE_MS = 60_000; // 1 minute staleness window
+
 export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const { group } = route.params;
+  const invalidate = (route.params as any)?.invalidate as 'expenses' | 'members' | true | undefined;
+  const flash = (route.params as any)?.flash as string | undefined;
   const { expenses, loading, error, refetch } = useExpenses(group.id);
   const {
     members,
@@ -44,7 +52,6 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const { profileId } = useProfile();
   const [activeTab, setActiveTab] = useState<'expenses' | 'members'>('expenses');
   const [refreshing, setRefreshing] = useState(false);
-  const hasRefetchedRef = useRef(false);
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
   const flashOpacity = useRef(new Animated.Value(0)).current;
 
@@ -53,37 +60,72 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const [inviteEmail, setInviteEmail] = useState('');
   const [submittingInvite, setSubmittingInvite] = useState(false);
 
-  // Auto-refresh when screen comes into focus (e.g., returning from other screens)
-  useFocusEffect(
-    React.useCallback(() => {
-      // Always refresh the currently active tab when focusing
-      if (activeTab === 'expenses') {
-        if (!hasRefetchedRef.current) {
-          hasRefetchedRef.current = true;
-          refetch();
-        }
-      } else if (activeTab === 'members') {
-        // ensure latest profile details (e.g., after editing placeholder)
-        refetchMembers();
-      }
-    }, [activeTab, refetch, refetchMembers])
-  );
+  // Cache/display state and hydration flags
+  const [displayExpenses, setDisplayExpenses] = useState<Expense[]>([]);
+  const [displayMembers, setDisplayMembers] = useState<typeof members>([]);
+  const [hydratedExpenses, setHydratedExpenses] = useState(false);
+  const [hydratedMembers, setHydratedMembers] = useState(false);
+  const [hasFetchedExpenses, setHasFetchedExpenses] = useState(false);
+  const lastExpensesFetchRef = useRef<number>(0);
+  const lastMembersFetchRef = useRef<number>(0);
+  const lastExpensesCacheRef = useRef<string | null>(null);
+  const lastMembersCacheRef = useRef<string | null>(null);
+  const expensesCacheKey = EXPENSES_CACHE_KEY_PREFIX + group.id;
+  const membersCacheKey = MEMBERS_CACHE_KEY_PREFIX + group.id;
 
-  // Reset the ref when the screen loses focus
+  // Staleness-gated refresh on focus, with route param–based invalidation
   useFocusEffect(
     React.useCallback(() => {
-      return () => {
-        hasRefetchedRef.current = false;
-      };
-    }, [])
+      // Check if a child screen requested an invalidate on return
+      if (invalidate) {
+        const clearFlag = () => setTimeout(() => {
+          // defer clearing params to avoid scheduling updates during insertion
+          navigation.setParams({ invalidate: undefined });
+        }, 0);
+
+        if (invalidate === 'members') {
+          refetchMembers().finally(() => {
+            lastMembersFetchRef.current = Date.now();
+            clearFlag();
+          });
+        } else {
+          // default to expenses when true or 'expenses'
+          refetch().finally(() => {
+            lastExpensesFetchRef.current = Date.now();
+            clearFlag();
+          });
+        }
+        return;
+      }
+
+      const now = Date.now();
+      const expensesStale = now - lastExpensesFetchRef.current > STALE_MS;
+      const membersStale = now - lastMembersFetchRef.current > STALE_MS;
+
+      if (activeTab === 'expenses') {
+        if (!loading && (displayExpenses.length === 0 || expensesStale)) {
+          refetch().finally(() => {
+            lastExpensesFetchRef.current = Date.now();
+          });
+        }
+      } else {
+        if (!membersLoading && (displayMembers.length === 0 || membersStale)) {
+          refetchMembers().finally(() => {
+            lastMembersFetchRef.current = Date.now();
+          });
+        }
+      }
+    }, [activeTab, displayExpenses.length, displayMembers.length, refetch, refetchMembers, invalidate, navigation, loading, membersLoading])
   );
 
   // Show transient flash message if provided via params
   useEffect(() => {
-    const message = (route.params as any)?.flash as string | undefined;
-    if (message) {
-      setFlashMessage(message);
-      navigation.setParams({ ...(route.params || {}), flash: undefined });
+    if (flash) {
+      setFlashMessage(flash);
+      // Defer clearing to avoid scheduling updates during insertion
+      setTimeout(() => {
+        navigation.setParams({ flash: undefined });
+      }, 0);
 
       // Fade in
       Animated.timing(flashOpacity, {
@@ -104,25 +146,51 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route.params]);
+  }, [flash, navigation, flashOpacity]);
+
+  useEffect(() => {
+    setHasFetchedExpenses(false);
+    lastExpensesCacheRef.current = null;
+    lastMembersCacheRef.current = null;
+  }, [expensesCacheKey]);
+
+  useEffect(() => {
+    if (!loading) {
+      setHasFetchedExpenses(true);
+    }
+  }, [loading]);
+
+  useEffect(() => {
+    if (!loading) {
+      lastExpensesFetchRef.current = Date.now();
+    }
+  }, [loading]);
+
+  useEffect(() => {
+    if (!membersLoading) {
+      lastMembersFetchRef.current = Date.now();
+    }
+  }, [membersLoading]);
 
   const onRefresh = async () => {
     setRefreshing(true);
     if (activeTab === 'members') {
       await refetchMembers();
+      lastMembersFetchRef.current = Date.now();
     } else {
       await refetch();
+      lastExpensesFetchRef.current = Date.now();
     }
     setRefreshing(false);
   };
 
   const handleAddExpense = () => {
-    navigation.navigate('AddExpense', { group });
+    navigation.navigate('AddExpense', { group, fromKey: route.key as any });
   };
 
   const handleExpensePress = (expense: Expense) => {
-    const creatorDisplayName = members.find(m => m.user_id === expense.created_by)?.user?.display_name ?? null;
-    navigation.navigate('ExpenseDetail', { expense, group, creatorDisplayName });
+    const creatorDisplayName = displayMembers.find(m => m.user_id === expense.created_by)?.user?.display_name ?? null;
+    navigation.navigate('ExpenseDetail', { expense, group, creatorDisplayName, fromKey: route.key as any });
   };
 
   const handleAddMember = () => {
@@ -144,6 +212,8 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
       });
       if (ok) {
         setAddMemberVisible(false);
+        await refetchMembers();
+        lastMembersFetchRef.current = Date.now();
       } else if (membersError) {
         Alert.alert('Error', membersError);
       }
@@ -208,13 +278,18 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   );
 
   const renderExpensesContent = () => {
-    // if (loading && !refreshing) {
-    //   return (
-    //     <View style={styles.centerContainer}>
-    //       <Text style={styles.loadingText}>Loading expenses...</Text>
-    //     </View>
-    //   );
-    // }
+    if (displayExpenses.length === 0 && (!hydratedExpenses || (!hasFetchedExpenses && loading))) {
+      return (
+        <View style={styles.expensesList}>
+          {[0,1,2].map((i) => (
+            <View key={i} style={styles.skeletonCard}>
+              <View style={styles.skeletonTitle} />
+              <View style={styles.skeletonSubtitle} />
+            </View>
+          ))}
+        </View>
+      );
+    }
 
     if (error) {
       return (
@@ -227,7 +302,7 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
       );
     }
 
-    if (expenses.length === 0) {
+    if (displayExpenses.length === 0) {
       return (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyTitle}>No expenses yet</Text>
@@ -243,7 +318,7 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
 
     return (
       <View style={styles.expensesList}>
-        {expenses.map((expense) => (
+        {displayExpenses.map((expense) => (
           <View key={expense.id}>
             {renderExpenseItem(expense)}
           </View>
@@ -264,17 +339,22 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
       );
     }
 
-    if (membersLoading && members.length === 0) {
+    if ((membersLoading && displayMembers.length === 0) || (!hydratedMembers && displayMembers.length === 0)) {
       return (
-        <View style={styles.centerContainer}>
-          <Text style={styles.loadingText}>Loading members...</Text>
+        <View style={styles.membersList}>
+          {[0,1,2].map((i) => (
+            <View key={i} style={styles.skeletonCard}>
+              <View style={styles.skeletonTitle} />
+              <View style={styles.skeletonSubtitle} />
+            </View>
+          ))}
         </View>
       );
     }
 
     return (
       <View style={styles.membersList}>
-        {members.map((member) => {
+        {displayMembers.map((member) => {
           const isPlaceholder = !member.authenticated;
           const isYou = profileId === member.user_id;
           const canRemove = isCurrentUserAdmin || isPlaceholder || isYou;
@@ -304,7 +384,7 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
                     style={styles.viewButton}
                     onPress={() => {
                       if (!member.user) return;
-                      navigation.navigate('MemberProfile', {
+                  navigation.navigate('MemberProfile', {
                         groupId: group.id,
                         profile: {
                           id: member.user_id,
@@ -316,6 +396,7 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
                           authenticated: member.authenticated,
                         },
                         canEdit: isCurrentUserAdmin && !member.authenticated,
+                        fromKey: route.key as any,
                       });
                     }}
                   >
@@ -340,7 +421,7 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const loadingBarAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (loading && expenses.length > 0) {
+    if (loading && displayExpenses.length > 0) {
       loadingBarAnim.setValue(0);
       Animated.loop(
         Animated.timing(loadingBarAnim, {
@@ -355,12 +436,93 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
       loadingBarAnim.setValue(0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, expenses.length]);
+  }, [loading, displayExpenses.length]);
 
   const barWidth = loadingBarAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ['0%', '100%'],
   });
+
+  // Hydrate expenses cache on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(expensesCacheKey);
+        if (raw) {
+          const cached: Expense[] = JSON.parse(raw);
+          if (Array.isArray(cached) && cached.length >= 0) {
+            setDisplayExpenses(cached);
+            lastExpensesCacheRef.current = raw;
+          }
+        }
+      } catch {}
+      finally {
+        setHydratedExpenses(true);
+      }
+    })();
+  }, [membersCacheKey]);
+
+  // Hydrate members cache on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(membersCacheKey);
+        if (raw) {
+          const cached = JSON.parse(raw);
+          if (Array.isArray(cached) && cached.length >= 0) {
+            setDisplayMembers(cached);
+            lastMembersCacheRef.current = raw;
+          }
+        }
+      } catch {}
+      finally {
+        setHydratedMembers(true);
+      }
+    })();
+  }, [group.id]);
+
+  // Sync expenses to cache/display without wiping cached UI while loading
+  useEffect(() => {
+    if (!hydratedExpenses) return;
+    const list = expenses ?? [];
+    if (!loading) {
+      setDisplayExpenses(list);
+      const serialized = JSON.stringify(list);
+      if (serialized !== lastExpensesCacheRef.current) {
+        lastExpensesCacheRef.current = serialized;
+        AsyncStorage.setItem(expensesCacheKey, serialized).catch(() => {});
+      }
+    } else if (list.length > 0) {
+      // if loading but we already have data (e.g., from a quick refetch), reflect it
+      setDisplayExpenses(list);
+      const serialized = JSON.stringify(list);
+      if (serialized !== lastExpensesCacheRef.current) {
+        lastExpensesCacheRef.current = serialized;
+        AsyncStorage.setItem(expensesCacheKey, serialized).catch(() => {});
+      }
+    }
+  }, [expenses, loading, hydratedExpenses, expensesCacheKey]);
+
+  // Sync members to cache/display without wiping cached UI while loading
+  useEffect(() => {
+    if (!hydratedMembers) return;
+    const list = members ?? [];
+    if (!membersLoading) {
+      setDisplayMembers(list);
+      const serialized = JSON.stringify(list);
+      if (serialized !== lastMembersCacheRef.current) {
+        lastMembersCacheRef.current = serialized;
+        AsyncStorage.setItem(membersCacheKey, serialized).catch(() => {});
+      }
+    } else if (list.length > 0) {
+      setDisplayMembers(list);
+      const serialized = JSON.stringify(list);
+      if (serialized !== lastMembersCacheRef.current) {
+        lastMembersCacheRef.current = serialized;
+        AsyncStorage.setItem(membersCacheKey, serialized).catch(() => {});
+      }
+    }
+  }, [members, membersLoading, hydratedMembers, membersCacheKey]);
 
   return (
     <View style={styles.container}>
@@ -370,7 +532,7 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         </Animated.View>
       )}
       {/* Animated loading bar (only when refetching) */}
-      {loading && expenses.length > 0 && (
+      {loading && displayExpenses.length > 0 && (
         <View style={styles.loadingBarContainer}>
           <Animated.View
             style={[
@@ -883,4 +1045,23 @@ const styles = StyleSheet.create({
     color: '#111',
     fontWeight: '600',
   },
+  skeletonCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  skeletonTitle: {
+    height: 18,
+    backgroundColor: '#e9ecef',
+    borderRadius: 6,
+    marginBottom: 8,
+    width: '60%',
+  },
+  skeletonSubtitle: {
+    height: 14,
+    backgroundColor: '#f0f2f4',
+    borderRadius: 6,
+    width: '40%',
+  }
 });

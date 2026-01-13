@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { CommonActions, RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import type { AppStackParamList } from '../types/navigation';
 
@@ -9,10 +9,11 @@ type MemberProfileRoute = RouteProp<AppStackParamList, 'MemberProfile'>;
 export const MemberProfileScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<MemberProfileRoute>();
-  const { groupId, profile, canEdit } = route.params;
+  const { groupId, profile, canEdit, fromKey } = route.params;
 
+  const [savedProfile, setSavedProfile] = useState(profile);
   const [displayName, setDisplayName] = useState(profile.display_name || '');
-  const [email] = useState(profile.email || null);
+  const email = profile.email || null;
   const [venmo, setVenmo] = useState((profile.venmo_username as string) || '');
   const [cashapp, setCashapp] = useState((profile.cashapp_username as string) || '');
   const [paypal, setPaypal] = useState((profile.paypal_username as string) || '');
@@ -20,18 +21,31 @@ export const MemberProfileScreen: React.FC = () => {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    setSavedProfile(profile);
+  }, [profile]);
+
+  useEffect(() => {
+    if (!editMode) {
+      setDisplayName(savedProfile.display_name || '');
+      setVenmo((savedProfile.venmo_username as string) || '');
+      setCashapp((savedProfile.cashapp_username as string) || '');
+      setPaypal((savedProfile.paypal_username as string) || '');
+    }
+  }, [savedProfile, editMode]);
+
+  useEffect(() => {
     navigation.setOptions({
-      headerTitle: profile.display_name || 'Member Profile',
+      headerTitle: savedProfile.display_name || 'Member Profile',
       headerRight: () => (
         canEdit ? (
           <TouchableOpacity
             onPress={() => {
               if (editMode) {
                 // reset
-                setDisplayName(profile.display_name || '');
-                setVenmo((profile.venmo_username as string) || '');
-                setCashapp((profile.cashapp_username as string) || '');
-                setPaypal((profile.paypal_username as string) || '');
+                setDisplayName(savedProfile.display_name || '');
+                setVenmo((savedProfile.venmo_username as string) || '');
+                setCashapp((savedProfile.cashapp_username as string) || '');
+                setPaypal((savedProfile.paypal_username as string) || '');
                 setEditMode(false);
               } else {
                 setEditMode(true);
@@ -44,16 +58,16 @@ export const MemberProfileScreen: React.FC = () => {
         ) : null
       ),
     });
-  }, [navigation, profile, canEdit, editMode]);
+  }, [navigation, savedProfile, canEdit, editMode]);
 
   const dirty = useMemo(() => {
     return (
-      displayName.trim() !== (profile.display_name || '') ||
-      venmo.trim() !== ((profile.venmo_username as string) || '') ||
-      cashapp.trim() !== ((profile.cashapp_username as string) || '') ||
-      paypal.trim() !== ((profile.paypal_username as string) || '')
+      displayName.trim() !== (savedProfile.display_name || '') ||
+      venmo.trim() !== ((savedProfile.venmo_username as string) || '') ||
+      cashapp.trim() !== ((savedProfile.cashapp_username as string) || '') ||
+      paypal.trim() !== ((savedProfile.paypal_username as string) || '')
     );
-  }, [displayName, venmo, cashapp, paypal, profile]);
+  }, [displayName, venmo, cashapp, paypal, savedProfile]);
 
   const handleSave = async () => {
     if (!canEdit || !profile || !profile.id) return;
@@ -77,6 +91,23 @@ export const MemberProfileScreen: React.FC = () => {
       if (error) {
         Alert.alert('Error', error.message ?? 'Failed to save');
         return;
+      }
+      setDisplayName(trimmedName);
+      setVenmo(venmo.trim());
+      setCashapp(cashapp.trim());
+      setPaypal(paypal.trim());
+      setSavedProfile({
+        ...savedProfile,
+        display_name: trimmedName,
+        venmo_username: venmo.trim() || null,
+        cashapp_username: cashapp.trim() || null,
+        paypal_username: paypal.trim() || null,
+      });
+      if (fromKey) {
+        navigation.dispatch({
+          ...CommonActions.setParams({ invalidate: 'members' }),
+          source: fromKey,
+        });
       }
       setEditMode(false);
       Alert.alert('Saved', 'Member profile has been updated.');
@@ -120,6 +151,7 @@ export const MemberProfileScreen: React.FC = () => {
             placeholder="e.g. @user or user"
             autoCapitalize="none"
             autoCorrect={false}
+            returnKeyType="done"
           />
 
           <Text style={styles.label}>Cash App Username (optional)</Text>
@@ -202,4 +234,3 @@ const styles = StyleSheet.create({
   buttonDisabled: { backgroundColor: '#A7C8FF' },
   buttonText: { color: '#fff', fontWeight: '700' },
 });
-

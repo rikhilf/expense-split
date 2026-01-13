@@ -8,7 +8,7 @@ export type AuthStackParamList = {
 export type AppStackParamList = {
   GroupList: undefined;
   CreateGroup: undefined;
-  GroupDetail: { group: Group; flash?: string };
+  GroupDetail: { group: Group; flash?: string; invalidate?: 'expenses' | 'members' | true };
   AddExpense: { group: Group };
   ExpenseDetail: { expense: Expense; group: Group };
   MemberProfile: {
@@ -23,6 +23,7 @@ export type AppStackParamList = {
       authenticated: boolean;
     };
     canEdit: boolean;
+    fromKey?: string;
   };
 };
 
