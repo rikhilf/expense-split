@@ -29,6 +29,16 @@ type InviteMemberResponse = {
   already_member?: boolean;
 };
 
+type LeaveGroupResponse = {
+  deleted_group: boolean;
+};
+
+type LeaveGroupResult = {
+  ok: boolean;
+  deletedGroup: boolean;
+  error?: string | null;
+};
+
 export const useMembers = (groupId: string) => {
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -200,6 +210,49 @@ export const useMembers = (groupId: string) => {
     }
   };
 
+  const leaveGroup = async (): Promise<LeaveGroupResult> => {
+    try {
+      setError(null);
+
+      if (!groupId) {
+        const message = 'Missing group id.';
+        setError(message);
+        return { ok: false, deletedGroup: false, error: message };
+      }
+
+      if (!profileId) {
+        const message = 'Could not resolve your profile.';
+        setError(message);
+        return { ok: false, deletedGroup: false, error: message };
+      }
+
+      const { data, error: fnError } = await supabase.functions.invoke<LeaveGroupResponse>(
+        'delete_group_if_last_member',
+        {
+          body: { group_id: groupId },
+        }
+      );
+
+      if (fnError) {
+        const message = fnError.message ?? 'Failed to leave group';
+        setError(message);
+        return { ok: false, deletedGroup: false, error: message };
+      }
+
+      const deletedGroup = !!data?.deleted_group;
+
+      if (!deletedGroup) {
+        setMembers(prev => prev.filter(member => member.user_id !== profileId));
+      }
+
+      return { ok: true, deletedGroup, error: null };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'An error occurred';
+      setError(message);
+      return { ok: false, deletedGroup: false, error: message };
+    }
+  };
+
   useEffect(() => {
     fetchMembers();
   }, [fetchMembers]);
@@ -211,6 +264,7 @@ export const useMembers = (groupId: string) => {
     refetch: fetchMembers,
     inviteMember,
     removeMember,
+    leaveGroup,
     isCurrentUserAdmin,
   };
 };

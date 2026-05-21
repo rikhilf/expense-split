@@ -1,0 +1,3 @@
+-- Remote baseline migration.
+-- This version exists in the linked Supabase project's migration history,
+-- but the original local migration file is not present in this checkout.

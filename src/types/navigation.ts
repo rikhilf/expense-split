@@ -6,7 +6,7 @@ export type AuthStackParamList = {
 };
 
 export type AppStackParamList = {
-  GroupList: undefined;
+  GroupList: { invalidate?: true; flash?: string } | undefined;
   CreateGroup: undefined;
   GroupDetail: { group: Group; flash?: string; invalidate?: 'expenses' | 'members' | true };
   AddExpense: { group: Group };

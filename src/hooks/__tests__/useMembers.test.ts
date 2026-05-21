@@ -41,7 +41,7 @@ describe('useMembers', () => {
   role,
   user_id,
   authenticated,
-  user:profiles ( id, display_name, email, avatar_url )
+  user:profiles ( id, display_name, email, avatar_url, venmo_username, cashapp_username, paypal_username )
 `);
     expect(eq).toHaveBeenCalledWith('group_id', 'g1');
     expect(returns).toHaveBeenCalled();
@@ -118,6 +118,43 @@ describe('useMembers', () => {
 
     expect(supabase.functions.invoke).toHaveBeenCalledWith('invite_member', {
       body: { group_id: 'g1', display_name: 'Bob', role: 'member' },
+    });
+  });
+
+  it('leaves a group via edge function', async () => {
+    (useProfile as jest.Mock).mockReturnValue({ profileId: 'p-self', profile: { id: 'p-self' }, loading: false, error: null, refresh: jest.fn(), reset: jest.fn() });
+    const fetchReturns = jest.fn().mockResolvedValue({ data: [], error: null });
+    const fetchEq = jest.fn(() => ({ returns: fetchReturns }));
+    const fetchSelect = jest.fn(() => ({ eq: fetchEq }));
+
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'memberships') {
+        return {
+          select: fetchSelect,
+          delete: jest.fn(),
+        } as any;
+      }
+      return {} as any;
+    });
+
+    (supabase.functions.invoke as jest.Mock).mockResolvedValue({
+      data: { deleted_group: false },
+      error: null,
+    });
+
+    const { result } = renderHook(() => useMembers('g1'));
+
+    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+
+    await act(async () => {
+      const leaveResult = await result.current.leaveGroup();
+      expect(leaveResult).toEqual({ ok: true, deletedGroup: false, error: null });
+    });
+
+    expect(supabase.functions.invoke).toHaveBeenCalledWith('delete_group_if_last_member', {
+      body: { group_id: 'g1' },
     });
   });
 });
