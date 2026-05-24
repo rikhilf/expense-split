@@ -29,6 +29,9 @@ export const GroupListScreen: React.FC<Props> = ({ navigation }) => {
   const [hydratedFromCache, setHydratedFromCache] = useState(false);
   const lastFetchRef = useRef<number>(0);
   const [refreshing, setRefreshing] = useState(false);
+  const flash = (route as any)?.params?.flash as string | undefined;
+  const [flashMessage, setFlashMessage] = useState<string | null>(null);
+  const flashOpacity = useRef(new Animated.Value(0)).current;
 
   useFocusEffect(
     React.useCallback(() => {
@@ -57,6 +60,30 @@ export const GroupListScreen: React.FC<Props> = ({ navigation }) => {
       }
     }, [displayGroups.length, refetch, navigation, route])
   );
+
+  useEffect(() => {
+    if (flash) {
+      setFlashMessage(flash);
+      setTimeout(() => {
+        navigation.setParams({ flash: undefined });
+      }, 0);
+
+      Animated.timing(flashOpacity, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => {
+        const hold = setTimeout(() => {
+          Animated.timing(flashOpacity, {
+            toValue: 0,
+            duration: 250,
+            useNativeDriver: true,
+          }).start(() => setFlashMessage(null));
+        }, 2000);
+        return () => clearTimeout(hold);
+      });
+    }
+  }, [flash, navigation, flashOpacity]);
 
   useEffect(() => {
     (async () => {
@@ -195,6 +222,11 @@ export const GroupListScreen: React.FC<Props> = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
+      {flashMessage && (
+        <Animated.View style={[styles.flashContainer, { opacity: flashOpacity }]} pointerEvents="none">
+          <Text style={styles.flashText}>{flashMessage}</Text>
+        </Animated.View>
+      )}
       {/* Animated loading bar (only when refetching) */}
       {loading && displayGroups.length > 0 && (
         <View style={styles.loadingBarContainer}>
@@ -230,6 +262,25 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
+  },
+  flashContainer: {
+    position: 'absolute',
+    top: 8,
+    left: 16,
+    right: 16,
+    zIndex: 20,
+    backgroundColor: '#d4edda',
+    borderColor: '#c3e6cb',
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    alignSelf: 'center',
+  },
+  flashText: {
+    color: '#155724',
+    textAlign: 'center',
+    fontWeight: '600',
   },
   loadingBarContainer: {
     position: 'absolute',

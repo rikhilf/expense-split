@@ -47,6 +47,7 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
     refetch: refetchMembers,
     inviteMember,
     removeMember,
+    leaveGroup,
     isCurrentUserAdmin,
   } = useMembers(group.id);
   const { profileId } = useProfile();
@@ -228,18 +229,29 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
     const name = target?.user?.display_name ?? 'this member';
 
     if (isYou) {
+      const authenticatedCount = members.filter(member => member.authenticated).length;
+      const isLastAuthenticatedMember = !!target?.authenticated && authenticatedCount === 1;
+      const confirmTitle = isLastAuthenticatedMember ? 'Delete Group' : 'Leave Group';
+      const confirmBody = isLastAuthenticatedMember
+        ? 'You are the last authenticated member. Leaving will permanently delete this group and all related data.'
+        : 'Are you sure you want to leave the group?';
+      const confirmAction = isLastAuthenticatedMember ? 'Delete Group' : 'Leave';
+
       Alert.alert(
-        'Leave Group',
-        'Are you sure you want to leave the group?',
+        confirmTitle,
+        confirmBody,
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Leave',
+            text: confirmAction,
             style: 'destructive',
             onPress: async () => {
-              const ok = await removeMember(membershipId);
-              if (ok) {
-                navigation.navigate('GroupList', { invalidate: true });
+              const result = await leaveGroup();
+              if (result.ok) {
+                const flashText = result.deletedGroup ? 'Group deleted.' : 'You left the group.';
+                navigation.navigate('GroupList', { invalidate: true, flash: flashText });
+              } else {
+                Alert.alert('Error', result.error ?? 'Failed to leave group.');
               }
             },
           },
