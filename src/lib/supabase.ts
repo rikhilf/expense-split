@@ -12,7 +12,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Missing Supabase environment variables');
   console.error('SUPABASE_URL:', supabaseUrl);
   console.error('SUPABASE_ANON_KEY:', supabaseAnonKey ? '[HIDDEN]' : 'undefined');
-  throw new Error('Missing Supabase environment variables. Please check your .env file and app.config.js');
+  throw new Error('Missing Supabase environment variables. Please check your .env.local or .env file and app.config.js');
 }
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {

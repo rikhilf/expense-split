@@ -47,12 +47,12 @@ npm install
 ```
 
 ### Environment Variables
-Create `.env` in this folder with your public Supabase credentials (anon key is safe to ship thanks to RLS):
+Create `.env.local` in this folder with your public Supabase credentials (anon key is safe to ship thanks to RLS):
 ```bash
 SUPABASE_URL=your_supabase_url
 SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
-These are loaded by `app.config.js` via `dotenv/config` and exposed to the app through `expo.extra`.
+These are loaded by `app.config.js`, which checks `.env.local` first and falls back to `.env`, then exposes them to the app through `expo.extra`.
 
 ### Run the App
 ```bash
@@ -143,7 +143,7 @@ Tests mock the Supabase client and cover hooks like `useGroups`, `useMembers`, a
 ```
 
 ## Troubleshooting
-- Missing env vars: Ensure `SUPABASE_URL` and `SUPABASE_ANON_KEY` are set in `.env`.
+- Missing env vars: Ensure `SUPABASE_URL` and `SUPABASE_ANON_KEY` are set in `.env.local` or `.env`.
 - OAuth callback: Set redirect URL in Supabase Auth to `expense-split://auth/callback`.
 - 401 from functions locally: Ensure you’re signed in (functions require a user JWT) or test via curl with a valid JWT.
 - RLS errors: Ensure policies from `LLMCONTEXT.md` are applied (memberships/expenses/expense_splits are the usual culprits).
