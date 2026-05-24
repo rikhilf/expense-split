@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Switch,
 } from 'react-native';
 import { useAddExpense, SplitMode } from '../hooks/useAddExpense';
 import { Group } from '../types/db';
