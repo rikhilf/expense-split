@@ -123,7 +123,7 @@ export const ProfileScreen: React.FC = () => {
             value={displayName}
             onChangeText={setDisplayName}
             placeholder="Your name"
-            autoCapitalize="words"
+            autoCapitalize="sentences"
             editable={editMode}
           />
 
