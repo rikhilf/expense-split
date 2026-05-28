@@ -39,7 +39,7 @@ create table memberships (
 create table expenses (
   id uuid primary key default gen_random_uuid(),
   group_id uuid not null references groups(id) on delete cascade,
-  created_by uuid not null, -- auth.users.id (logical; no FK)
+  created_by uuid not null references profiles(id), -- profiles.id so placeholder-aware app data stays profile-keyed
   description text,
   amount numeric not null,
   date date not null,

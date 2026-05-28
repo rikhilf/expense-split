@@ -137,7 +137,7 @@ export const GroupListScreen: React.FC<Props> = ({ navigation }) => {
       <View style={styles.groupInfo}>
         <Text style={styles.groupName}>{group.name}</Text>
         <Text style={styles.groupDate}>
-          Created {new Date(group.created_at).toLocaleDateString()}
+          Created {group.created_at ? new Date(group.created_at).toLocaleDateString() : 'Unknown'}
         </Text>
       </View>
       <Text style={styles.arrow}>›</Text>

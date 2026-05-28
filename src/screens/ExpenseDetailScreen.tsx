@@ -25,9 +25,11 @@ interface Props {
 }
 
 export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
-  const { expense, group, creatorDisplayName, fromKey } = route.params;
+  const { expense, group, creatorDisplayName } = route.params;
   const { deleteExpense, loading: deleting, error: deleteError } = useDeleteExpense();
   const { splits, loading: splitsLoading, error: splitsError } = useExpenseSplits(expense.id);
+  const formatDate = (date: string | null) =>
+    date ? new Date(date).toLocaleDateString() : 'Unknown';
 
   const handleEditExpense = () => {
     // TODO: Implement edit expense functionality
@@ -76,7 +78,7 @@ export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Date:</Text>
             <Text style={styles.detailValue}>
-              {new Date(expense.date).toLocaleDateString()}
+              {formatDate(expense.date)}
             </Text>
           </View>
           <View style={styles.detailRow}>
@@ -92,7 +94,7 @@ export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Created:</Text>
             <Text style={styles.detailValue}>
-              {new Date(expense.created_at).toLocaleDateString()}
+              {formatDate(expense.created_at)}
             </Text>
           </View>
         </View>
@@ -300,4 +302,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-}); 
+});

@@ -105,6 +105,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "expenses_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "expenses_group_id_fkey"
             columns: ["group_id"]
             isOneToOne: false

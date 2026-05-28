@@ -16,11 +16,11 @@ Product goals and automation feasibility are documented in PROJECT_GOALS.md. Tre
 
 Key ID rules
 
-profiles.id = person key used inside app data (e.g., memberships.user_id, expense_splits.user_id).
+profiles.id = person key used inside app data (e.g., memberships.user_id, expense_splits.user_id, expenses.created_by).
 
-auth.users.id = auth key used on edges (e.g., groups.created_by, expenses.created_by, settlements.paid_by/paid_to, invoices.uploaded_by).
+auth.users.id = auth key used on auth-owned edge fields (e.g., groups.created_by, settlements.paid_by/paid_to, invoices.uploaded_by).
 
-Never put auth.users.id into expense_splits.user_id or memberships.user_id (must be profiles.id).
+Never put auth.users.id into expense_splits.user_id, memberships.user_id, or expenses.created_by (must be profiles.id).
 
 1) Current Schema (DDL-style summary)
 
@@ -54,7 +54,7 @@ unique(user_id, group_id)
 expenses
 id              uuid pk default gen_random_uuid()
 group_id        uuid not null references groups(id)
-created_by      uuid not null         -- auth.users.id (logical; no FK)
+created_by      uuid not null references profiles(id) -- profiles.id
 description     text
 amount          numeric not null
 date            date not null
@@ -266,7 +266,7 @@ create_expense_with_splits
 
 Validates caller membership.
 
-Inserts expenses and batch expense_splits (using profiles.id).
+Inserts expenses (created_by = caller's profiles.id) and batch expense_splits (using profiles.id).
 
 apply_settlement_bundle
 
@@ -302,9 +302,9 @@ You can optionally add SQL views or RPCs later, but not necessary for MVP.
 
 Profile vs Auth IDs
 
-Internals (splits, memberships) use profiles.id.
+Internals (splits, memberships, expense creators) use profiles.id.
 
-Edge/creator/payer fields use auth.users.id.
+Auth-owned edge/payer fields use auth.users.id.
 
 Membership inserts
 
@@ -374,24 +374,17 @@ with check (
   )
 );
 
--- expense_splits INSERT (caller is member & target is member)
-create policy "Group members can add splits"
+-- expense_splits writes (expense creator profile or group admin)
+create policy "Expense creator or admin can add splits"
 on expense_splits for insert
 with check (
   exists (
     select 1 from expenses e
     where e.id = expense_splits.expense_id
-      and exists (
-        select 1 from memberships m
-        where m.group_id = e.group_id
-          and m.user_id = get_current_profile_id()
+      and (
+        e.created_by = get_current_profile_id()
+        or is_group_admin(e.group_id)
       )
-  )
-  and exists (
-    select 1 from expenses e
-    join memberships mt on mt.group_id = e.group_id
-    where e.id = expense_splits.expense_id
-      and mt.user_id = expense_splits.user_id
   )
 );
 
