@@ -139,7 +139,7 @@ export const MemberProfileScreen: React.FC = () => {
             onChangeText={setDisplayName}
             editable={editMode && canEdit}
             placeholder="Name"
-            autoCapitalize="words"
+            autoCapitalize="sentences"
           />
 
           <Text style={styles.label}>Venmo Username (optional)</Text>

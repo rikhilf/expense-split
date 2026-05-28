@@ -639,7 +639,7 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
               placeholder="Name (required)"
               value={inviteName}
               onChangeText={setInviteName}
-              autoCapitalize="words"
+              autoCapitalize="sentences"
             />
             <TextInput
               style={styles.input}

@@ -256,7 +256,7 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
               placeholder="What was this expense for?"
               value={description}
               onChangeText={setDescription}
-              autoCapitalize="words"
+              autoCapitalize="sentences"
               autoCorrect={false}
             />
 

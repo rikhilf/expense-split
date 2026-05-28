@@ -68,7 +68,7 @@ export const CreateGroupScreen: React.FC<Props> = ({ navigation }) => {
               value={groupName}
               onChangeText={setGroupName}
               autoFocus
-              autoCapitalize="words"
+              autoCapitalize="sentences"
               autoCorrect={false}
             />
 
