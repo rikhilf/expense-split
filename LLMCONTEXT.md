@@ -12,6 +12,8 @@ Auth: Supabase Auth JWT.
 
 Core model: groups contain memberships (linking to profiles). expenses are split per person via expense_splits. Users can record settlements (payments) that can cover multiple expenses via settlement_items.
 
+Product goals and automation feasibility are documented in PROJECT_GOALS.md. Treat that file as the canonical product-scope note for public expense links, payment handles, receipt parsing, transaction linking, invoice parsing, and on-device classification tradeoffs.
+
 Key ID rules
 
 profiles.id = person key used inside app data (e.g., memberships.user_id, expense_splits.user_id).
@@ -409,11 +411,21 @@ create_expense_with_splits Edge Function.
 
 apply_settlement_bundle Edge Function.
 
+create_expense_share Edge Function for public expense detail links (recipient-specific token preferred).
+
 Add UI for:
 
 Viewing a settlement’s linked settlement_items (per-expense breakdown).
 
 Inviting by email and showing placeholder status.
+
+Public expense detail page for non-app participants, including payment links from stored profile handles.
+
+Receipt capture/review flow with OCR-derived line items and fast assignment of each item to group members.
+
+Automation:
+
+Start with receipt parsing, recurring templates, and transaction candidate suggestions before invoice parsing. Use deterministic rules and user confirmation first; add transaction linking and on-device classification only after the manual/public-link workflow is stable. See PROJECT_GOALS.md for feasibility decisions.
 
 (Optional) Add DB CHECKs for sums (splits vs expense total; settlement_items vs settlement total) if you want hard guarantees.
 

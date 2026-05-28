@@ -8,6 +8,7 @@ A mobile app for splitting expenses with friends, built with Expo (React Native)
 
 ## Table of Contents
 - [Features](#features)
+- [Project Goals](#project-goals)
 - [Tech Stack](#tech-stack)
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
@@ -26,8 +27,17 @@ A mobile app for splitting expenses with friends, built with Expo (React Native)
 - Create groups and invite members (by email or placeholder names)
 - Add expenses and split per member
 - Record settlements that can cover multiple expenses
+- Store payment handles for Venmo, Cash App, and PayPal
+- Planned: public expense links so non-app participants can review and pay their share
+- Planned: receipt image parsing with item-level assignment to group members
 - Email/password and OAuth sign-in (Google, Apple)
 - Secure by default with Supabase RLS
+
+## Project Goals
+The current product direction and feasibility notes are documented in:
+- `PROJECT_GOALS.md`
+
+This covers public expense links for non-app participants, payment app links, receipt parsing, transaction linking, invoice parsing, and on-device classification tradeoffs.
 
 ## Tech Stack
 - Expo React Native (TypeScript)
@@ -155,7 +165,10 @@ Tests mock the Supabase client and cover hooks like `useGroups`, `useMembers`, a
 ---
 
 For deeper technical details (schema, RLS, helper functions, invariants), see `LLMCONTEXT.md`.
-- [ ] Implement invoice parsing (future feature)
+- [ ] Implement public expense links for non-app participants
+- [ ] Add multilingual receipt parsing and item-level assignment
+- [ ] Add transaction-linking candidate detection for commonly split expenses
+- [ ] Implement invoice parsing for bill documents where transaction data is insufficient
 - [ ] Add push notifications
 - [ ] Add offline support
 
