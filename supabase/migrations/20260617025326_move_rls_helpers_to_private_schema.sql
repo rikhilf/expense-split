@@ -157,6 +157,15 @@ using (
       and (
         e.created_by = app_private.get_current_profile_id()
         or app_private.is_group_admin(e.group_id)
+        or (
+          app_private.is_member_of_group(e.group_id)
+          and exists (
+            select 1
+            from public.profiles p
+            where p.id = expense_splits.user_id
+              and p.auth_user_id is null
+          )
+        )
       )
   )
 );
@@ -285,7 +294,19 @@ on public.invoices
 for insert
 with check (
   uploaded_by = (select auth.uid())
-  or app_private.is_member_of_group(group_id)
+  and (
+    group_id is null
+    or app_private.is_member_of_group(group_id)
+  )
+  and (
+    expense_id is null
+    or exists (
+      select 1
+      from public.expenses e
+      where e.id = invoices.expense_id
+        and app_private.is_member_of_group(e.group_id)
+    )
+  )
 );
 
 create policy "Uploader or admin can update invoice"
@@ -348,8 +369,8 @@ create policy "profiles_select_self"
 on public.profiles
 for select
 using (
-  ((select auth.uid()) is not null and (select auth.uid()) = auth_user_id)
-  or ((select auth.uid()) is not null and auth_user_id is null)
+  (select auth.uid()) is not null
+  and (select auth.uid()) = auth_user_id
 );
 
 create policy "profiles_select_same_group"
