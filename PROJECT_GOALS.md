@@ -1,6 +1,10 @@
 # Project Goals and Feasibility
 
-Last reviewed: 2026-05-24
+Last reviewed: 2026-06-16
+
+Related planning note:
+
+- `APPLE_INTELLIGENCE_NOTES.md` tracks recent Apple Intelligence / Siri implications for receipt parsing, on-device AI, and roadmap sequencing.
 
 ## Product direction
 

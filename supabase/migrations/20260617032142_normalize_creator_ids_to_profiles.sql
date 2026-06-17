@@ -19,6 +19,9 @@ and not exists (
   where p.auth_user_id = u.id
 );
 
+alter table public.groups
+  drop constraint if exists groups_created_by_fkey;
+
 update public.groups g
 set created_by = p.id
 from public.profiles p
@@ -37,7 +40,6 @@ begin
 end $$;
 
 alter table public.groups
-  drop constraint if exists groups_created_by_fkey,
   add constraint groups_created_by_fkey
     foreign key (created_by) references public.profiles(id);
 

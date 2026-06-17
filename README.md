@@ -36,6 +36,8 @@ A mobile app for splitting expenses with friends, built with Expo (React Native)
 ## Project Goals
 The current product direction and feasibility notes are documented in:
 - `PROJECT_GOALS.md`
+- `APPLE_INTELLIGENCE_NOTES.md`
+- `COMPETITOR_RESEARCH.md`
 
 This covers public expense links for non-app participants, payment app links, receipt parsing, transaction linking, invoice parsing, and on-device classification tradeoffs.
 
