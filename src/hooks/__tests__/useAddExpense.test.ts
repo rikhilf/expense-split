@@ -69,6 +69,14 @@ describe('useAddExpense', () => {
       resultValue = await result.current.addExpense('g1', data);
     });
     expect(resultValue).toEqual(expense);
+    expect(expenseInsert).toHaveBeenCalledWith({
+      group_id: 'g1',
+      created_by: 'p1',
+      description: 'd',
+      amount: 100,
+      date: '2020-01-01',
+      type: 'manual',
+    });
 
     // The hook should calculate two equal splits
     const expectedSplits = [

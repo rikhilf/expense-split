@@ -36,6 +36,7 @@ const MEMBERS_CACHE_KEY_PREFIX = 'members_cache_v1:';
 const STALE_MS = 60_000; // 1 minute staleness window
 
 export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
+  const routeKey = (navigation?.getState?.()?.routes ?? []).find((r: any) => r.name === 'GroupDetail')?.key;
   const { group } = route.params;
   const invalidate = (route.params as any)?.invalidate as 'expenses' | 'members' | true | undefined;
   const flash = (route.params as any)?.flash as string | undefined;
@@ -186,12 +187,12 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   const handleAddExpense = () => {
-    navigation.navigate('AddExpense', { group, fromKey: route.key as any });
+    navigation.navigate('AddExpense', { group, fromKey: routeKey as any });
   };
 
   const handleExpensePress = (expense: Expense) => {
     const creatorDisplayName = displayMembers.find(m => m.user_id === expense.created_by)?.user?.display_name ?? null;
-    navigation.navigate('ExpenseDetail', { expense, group, creatorDisplayName, fromKey: route.key as any });
+    navigation.navigate('ExpenseDetail', { expense, group, creatorDisplayName, fromKey: routeKey as any });
   };
 
   const handleAddMember = () => {
@@ -408,7 +409,7 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
                           authenticated: member.authenticated,
                         },
                         canEdit: isCurrentUserAdmin && !member.authenticated,
-                        fromKey: route.key as any,
+                        fromKey: routeKey as any,
                       });
                     }}
                   >
@@ -565,7 +566,7 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         <View style={styles.header}>
           <Text style={styles.groupName}>{group.name}</Text>
           <Text style={styles.groupDate}>
-            Created {new Date(group.created_at).toLocaleDateString()}
+            Created {group.created_at ? new Date(group.created_at).toLocaleDateString() : 'Unknown'}
           </Text>
         </View>
 
