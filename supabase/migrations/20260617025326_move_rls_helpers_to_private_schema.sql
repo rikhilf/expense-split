@@ -106,6 +106,9 @@ with check (
   exists (
     select 1
     from public.expenses e
+    join public.memberships split_member
+      on split_member.group_id = e.group_id
+     and split_member.user_id = expense_splits.user_id
     where e.id = expense_splits.expense_id
       and (
         e.created_by = app_private.get_current_profile_id()
@@ -132,6 +135,9 @@ with check (
   exists (
     select 1
     from public.expenses e
+    join public.memberships split_member
+      on split_member.group_id = e.group_id
+     and split_member.user_id = expense_splits.user_id
     where e.id = expense_splits.expense_id
       and (
         e.created_by = app_private.get_current_profile_id()
@@ -172,7 +178,8 @@ create policy "Group members can add expenses"
 on public.expenses
 for insert
 with check (
-  app_private.is_member_of_group(group_id)
+  created_by = app_private.get_current_profile_id()
+  and app_private.is_member_of_group(group_id)
 );
 
 create policy "Creator profile or admin can update expense"
@@ -390,12 +397,19 @@ create policy "profiles_update_placeholder_name"
 on public.profiles
 for update
 using (
-  (select auth.uid()) is not null
-  and auth_user_id is null
+  auth_user_id is null
+  and exists (
+    select 1
+    from public.memberships target_membership
+    join public.memberships caller_membership
+      on caller_membership.group_id = target_membership.group_id
+    where target_membership.user_id = profiles.id
+      and caller_membership.user_id = app_private.get_current_profile_id()
+      and caller_membership.role = 'admin'
+  )
 )
 with check (
-  (select auth.uid()) is not null
-  and auth_user_id is null
+  auth_user_id is null
 );
 
 drop policy if exists "View settlement_items in my groups" on public.settlement_items;
