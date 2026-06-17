@@ -130,3 +130,67 @@ using (
   (select auth.uid()) is not null
   and (select auth.uid()) = auth_user_id
 );
+
+drop policy if exists "Creator profile or admin can update expense" on public.expenses;
+create policy "Creator profile or admin can update expense"
+on public.expenses
+for update
+using (
+  created_by = app_private.get_current_profile_id()
+  or app_private.is_group_admin(group_id)
+)
+with check (
+  (
+    created_by = app_private.get_current_profile_id()
+    and app_private.is_member_of_group(group_id)
+  )
+  or app_private.is_group_admin(group_id)
+);
+
+revoke update (created_by, group_id) on public.expenses from anon, authenticated;
+
+drop policy if exists "Insert settlement_items if member of group" on public.settlement_items;
+create policy "Insert settlement_items if member of group"
+on public.settlement_items
+for insert
+with check (
+  exists (
+    select 1
+    from public.settlements s
+    join public.expenses e
+      on e.id = settlement_items.expense_id
+     and e.group_id = s.group_id
+    where s.id = settlement_items.settlement_id
+      and app_private.is_member_of_group(s.group_id)
+  )
+);
+
+drop policy if exists "Update settlement_items if payer or admin" on public.settlement_items;
+create policy "Update settlement_items if payer or admin"
+on public.settlement_items
+for update
+using (
+  exists (
+    select 1
+    from public.settlements s
+    where s.id = settlement_items.settlement_id
+      and (
+        s.paid_by = (select auth.uid())
+        or app_private.is_group_admin(s.group_id)
+      )
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.settlements s
+    join public.expenses e
+      on e.id = settlement_items.expense_id
+     and e.group_id = s.group_id
+    where s.id = settlement_items.settlement_id
+      and (
+        s.paid_by = (select auth.uid())
+        or app_private.is_group_admin(s.group_id)
+      )
+  )
+);

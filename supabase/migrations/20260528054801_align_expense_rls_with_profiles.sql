@@ -1,5 +1,27 @@
 do $$
 begin
+  insert into public.profiles (auth_user_id, display_name, email)
+  select
+    u.id,
+    coalesce(u.raw_user_meta_data ->> 'full_name', split_part(u.email, '@', 1), 'User'),
+    u.email
+  from auth.users u
+  where exists (
+    select 1
+    from public.expenses e
+    where e.created_by = u.id
+  )
+  and not exists (
+    select 1
+    from public.profiles p
+    where p.auth_user_id = u.id
+  );
+
+  update public.expenses e
+  set created_by = p.id
+  from public.profiles p
+  where e.created_by = p.auth_user_id;
+
   if not exists (
     select 1
     from pg_constraint
@@ -23,9 +45,14 @@ using (
   or public.is_group_admin(group_id)
 )
 with check (
-  created_by = public.get_current_profile_id()
+  (
+    created_by = public.get_current_profile_id()
+    and public.is_member_of_group(group_id)
+  )
   or public.is_group_admin(group_id)
 );
+
+revoke update (created_by, group_id) on public.expenses from anon, authenticated;
 
 create policy "Creator profile or admin can delete expense"
 on public.expenses

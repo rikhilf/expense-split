@@ -199,9 +199,14 @@ using (
   or app_private.is_group_admin(group_id)
 )
 with check (
-  created_by = app_private.get_current_profile_id()
+  (
+    created_by = app_private.get_current_profile_id()
+    and app_private.is_member_of_group(group_id)
+  )
   or app_private.is_group_admin(group_id)
 );
+
+revoke update (created_by, group_id) on public.expenses from anon, authenticated;
 
 create policy "Creator profile or admin can delete expense"
 on public.expenses
@@ -457,6 +462,9 @@ with check (
   exists (
     select 1
     from public.settlements s
+    join public.expenses e
+      on e.id = settlement_items.expense_id
+     and e.group_id = s.group_id
     where s.id = settlement_items.settlement_id
       and app_private.is_member_of_group(s.group_id)
   )
@@ -469,6 +477,20 @@ using (
   exists (
     select 1
     from public.settlements s
+    where s.id = settlement_items.settlement_id
+      and (
+        s.paid_by = (select auth.uid())
+        or app_private.is_group_admin(s.group_id)
+      )
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.settlements s
+    join public.expenses e
+      on e.id = settlement_items.expense_id
+     and e.group_id = s.group_id
     where s.id = settlement_items.settlement_id
       and (
         s.paid_by = (select auth.uid())
