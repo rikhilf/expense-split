@@ -21,7 +21,11 @@ export const useExpenseSplits = (expenseId: string) => {
   const [error, setError] = useState<string | null>(null);
 
   const fetchSplits = async () => {
-    if (!expenseId) return;
+    if (!expenseId) {
+      setSplits([]);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
@@ -63,4 +67,3 @@ export const useExpenseSplits = (expenseId: string) => {
     refetch: fetchSplits,
   };
 };
-

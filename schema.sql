@@ -21,7 +21,7 @@ create table groups (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   created_at timestamptz default timezone('utc', now()),
-  created_by uuid not null -- references auth.users.id (logical; no FK)
+  created_by uuid not null references profiles(id)
 );
 
 -- MEMBERSHIPS

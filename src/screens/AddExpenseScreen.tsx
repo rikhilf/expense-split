@@ -12,7 +12,9 @@ import {
   Switch,
 } from 'react-native';
 import { useAddExpense, SplitMode } from '../hooks/useAddExpense';
-import { Group } from '../types/db';
+import { useUpdateExpense } from '../hooks/useUpdateExpense';
+import { useExpenseSplits } from '../hooks/useExpenseSplits';
+import { Expense, Group } from '../types/db';
 import { useMembers } from '../hooks/useMembers';
 
 interface Props {
@@ -20,6 +22,7 @@ interface Props {
   route: {
     params: {
       group: Group;
+      expense?: Expense;
       fromKey?: string;
     };
   };
@@ -55,13 +58,20 @@ const distributeUnits = (ids: string[], remainderUnits: number) => {
 };
 
 export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
-  const { group, fromKey } = route.params;
+  const { group, expense } = route.params;
+  const isEditMode = !!expense;
   const { addExpense, loading, error } = useAddExpense();
+  const { updateExpense, loading: updating, error: updateError } = useUpdateExpense();
   const { members, loading: membersLoading, error: membersError } = useMembers(group.id);
+  const {
+    splits: existingSplits,
+    loading: existingSplitsLoading,
+    error: existingSplitsError,
+  } = useExpenseSplits(expense?.id ?? '');
   
-  const [description, setDescription] = useState('');
-  const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [description, setDescription] = useState(expense?.description ?? '');
+  const [amount, setAmount] = useState(expense ? String(Number(expense.amount).toFixed(2)) : '');
+  const [date, setDate] = useState(expense?.date ?? new Date().toISOString().split('T')[0]);
   const [splitMode, setSplitMode] = useState<SplitMode>('equal');
   const [selectedMap, setSelectedMap] = useState<Record<string, boolean>>({});
   const [sharesMap, setSharesMap] = useState<Record<string, string>>({}); // percent strings per user id
@@ -72,16 +82,51 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
   const [amountDraftMap, setAmountDraftMap] = useState<Record<string, string>>({});
   // Removed success timer UI in favor of immediate navigation + toast/flash
 
-  // Initialize selection to all members once members load
+  // Initialize selection once members load. Edit mode mirrors existing splits;
+  // create mode starts with every member selected.
   useEffect(() => {
-    if ((members?.length ?? 0) > 0 && Object.keys(selectedMap).length === 0) {
+    if ((members?.length ?? 0) === 0 || Object.keys(selectedMap).length > 0) return;
+
+    if (isEditMode) {
+      if (existingSplitsLoading) return;
+
       const init: Record<string, boolean> = {};
       members.forEach(m => {
-        init[m.user_id] = true;
+        init[m.user_id] = false;
       });
+
+      const nextShares: Record<string, string> = {};
+      existingSplits.forEach((split) => {
+        init[split.user_id] = true;
+        const percent = split.share != null
+          ? split.share * 100
+          : (Number(split.amount) / (Number(expense?.amount) || 1)) * 100;
+        nextShares[split.user_id] = percent.toFixed(2);
+      });
+
+      const selectedSplitCount = existingSplits.length;
+      const expectedEqualShare = selectedSplitCount > 0 ? 100 / selectedSplitCount : 0;
+      const isEqualSplit = selectedSplitCount > 0 && existingSplits.every((split) => {
+        const percent = split.share != null
+          ? split.share * 100
+          : (Number(split.amount) / (Number(expense?.amount) || 1)) * 100;
+        return Math.abs(percent - expectedEqualShare) <= 0.01;
+      });
+
       setSelectedMap(init);
+      setSharesMap(nextShares);
+      setSplitMode(isEqualSplit ? 'equal' : 'shares');
+      setManualShares(!isEqualSplit);
+      setLockedMap(isEqualSplit ? {} : Object.fromEntries(existingSplits.map((split) => [split.user_id, true])));
+      return;
     }
-  }, [members]);
+
+    const init: Record<string, boolean> = {};
+    members.forEach(m => {
+      init[m.user_id] = true;
+    });
+    setSelectedMap(init);
+  }, [members, selectedMap, isEditMode, existingSplitsLoading, existingSplits, expense?.amount]);
 
   const selectedIds = useMemo(
     () => Object.keys(selectedMap).filter(id => selectedMap[id]),
@@ -184,7 +229,7 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
     setAmount(sanitized);
   };
 
-  const handleAddExpense = async () => {
+  const handleSubmitExpense = async () => {
     if (!description.trim() || !amount.trim()) {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
@@ -207,7 +252,7 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
     }
 
     try {
-      const expense = await addExpense(group.id, {
+      const expenseData = {
         description: description.trim(),
         amount: numericAmount,
         date,
@@ -221,10 +266,22 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
               })),
             }
           : {}),
-      });
+      };
 
-      if (expense) {
-        // Pop back to GroupDetail, then merge params to trigger refresh
+      const savedExpense = isEditMode && expense
+        ? await updateExpense(expense.id, expenseData)
+        : await addExpense(group.id, expenseData);
+
+      if (savedExpense) {
+        if (isEditMode) {
+          navigation.navigate({
+            name: 'GroupDetail',
+            params: { group, flash: 'Expense updated', invalidate: 'expenses' as any },
+            merge: true,
+          } as any);
+          return;
+        }
+
         navigation.goBack();
         setTimeout(() => {
           navigation.navigate({
@@ -235,9 +292,13 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
         }, 0);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to add expense');
+      Alert.alert('Error', isEditMode ? 'Failed to update expense' : 'Failed to add expense');
     }
   };
+
+  const saving = isEditMode ? updating : loading;
+  const submitError = isEditMode ? updateError : error;
+  const submitDisabled = saving || (isEditMode && existingSplitsLoading) || (splitMode === 'shares' && !isSharesTotalValid);
 
   return (
     <KeyboardAvoidingView
@@ -246,8 +307,10 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
     >
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.content}>
-          <Text style={styles.title}>Add Expense</Text>
-          <Text style={styles.subtitle}>Add a new expense to {group.name}</Text>
+          <Text style={styles.title}>{isEditMode ? 'Edit Expense' : 'Add Expense'}</Text>
+          <Text style={styles.subtitle}>
+            {isEditMode ? `Update this expense in ${group.name}` : `Add a new expense to ${group.name}`}
+          </Text>
 
           <View style={styles.form}>
             <Text style={styles.label}>Description *</Text>
@@ -424,6 +487,12 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
               </View>
             )}
 
+            {existingSplitsError && (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{existingSplitsError}</Text>
+              </View>
+            )}
+
             <View style={styles.membersList}>
               {(members ?? []).map(member => {
                 const id = member.user_id;
@@ -589,28 +658,29 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
               )}
             </View>
 
-            {error && (
+            {submitError && (
               <View style={styles.errorContainer}>
-                <Text style={styles.errorText}>{error}</Text>
+                <Text style={styles.errorText}>{submitError}</Text>
               </View>
             )}
 
             {/* Success UI removed; feedback shown via toast/flash on previous screen */}
 
             {(() => {
-              const isAddDisabled = loading || (splitMode === 'shares' && !isSharesTotalValid);
               return (
                 <TouchableOpacity
                   style={[
                     styles.button,
-                    isAddDisabled ? styles.primaryButtonDisabled : styles.primaryButton,
-                    isAddDisabled && styles.buttonDisabled,
+                    submitDisabled ? styles.primaryButtonDisabled : styles.primaryButton,
+                    submitDisabled && styles.buttonDisabled,
                   ]}
-                  onPress={handleAddExpense}
-                  disabled={isAddDisabled}
+                  onPress={handleSubmitExpense}
+                  disabled={submitDisabled}
                 >
                   <Text style={styles.buttonText}>
-                    {loading ? 'Adding...' : 'Add Expense'}
+                    {saving
+                      ? (isEditMode ? 'Saving...' : 'Adding...')
+                      : (isEditMode ? 'Save Changes' : 'Add Expense')}
                   </Text>
                 </TouchableOpacity>
               );
@@ -619,7 +689,7 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
             <TouchableOpacity
               style={[styles.button, styles.cancelButton]}
               onPress={() => navigation.goBack()}
-              disabled={loading}
+              disabled={saving}
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>

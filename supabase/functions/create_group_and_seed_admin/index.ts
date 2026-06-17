@@ -113,10 +113,10 @@ serve(async (req) => {
 
     const profile = await upsertProfileForAuthUser(user);
 
-    // 1) Create the group (created_by uses auth.users.id)
+    // 1) Create the group (created_by uses profiles.id)
     const { data: group, error: grpErr } = await admin
       .from("groups")
-      .insert({ name, created_by: user.id })
+      .insert({ name, created_by: profile.id })
       .select("*")
       .single();
 
