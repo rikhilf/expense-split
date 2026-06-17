@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { ExpenseInsert, ExpenseSplitInsert } from '../types/db';
 import { useProfile, getOrCreateProfileId } from '../contexts/ProfileContext';
+import { distributeAmountByWeights, distributeAmountEvenly } from '../lib/splitAmounts';
 
 export type SplitMode = 'equal' | 'shares';
 
@@ -81,13 +82,16 @@ export const useAddExpense = () => {
       
       if (expenseData.splitMode === 'equal') {
         const memberCount = selectedMemberships.length;
-        const shareAmount = expenseData.amount / memberCount;
+        const shareAmounts = distributeAmountEvenly(
+          expenseData.amount,
+          selectedMemberships.map((membership) => membership.user_id)
+        );
         
-        splits = selectedMemberships.map(membership => ({
+        splits = selectedMemberships.map((membership) => ({
           expense_id: expense.id,
           user_id: membership.user_id,
           share: 1 / memberCount,
-          amount: shareAmount
+          amount: shareAmounts[membership.user_id]
         }));
       } else if (expenseData.splitMode === 'shares' && expenseData.shares) {
         const totalShares = expenseData.shares.reduce((sum, share) => sum + share.share, 0);
@@ -95,12 +99,20 @@ export const useAddExpense = () => {
           setError('Total shares must be greater than zero');
           return null;
         }
+
+        const shareAmounts = distributeAmountByWeights(
+          expenseData.amount,
+          expenseData.shares.map((share) => ({
+            id: share.userId,
+            weight: share.share,
+          }))
+        );
         
         splits = expenseData.shares.map(share => ({
           expense_id: expense.id,
           user_id: share.userId,
           share: share.share / totalShares,
-          amount: (share.share / totalShares) * expenseData.amount
+          amount: shareAmounts[share.userId] ?? 0
         }));
       }
 

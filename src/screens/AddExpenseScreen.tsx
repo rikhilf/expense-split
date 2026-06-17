@@ -16,6 +16,7 @@ import { useUpdateExpense } from '../hooks/useUpdateExpense';
 import { useExpenseSplits } from '../hooks/useExpenseSplits';
 import { Expense, Group } from '../types/db';
 import { useMembers } from '../hooks/useMembers';
+import { distributeAmountByWeights, distributeAmountEvenly } from '../lib/splitAmounts';
 
 interface Props {
   navigation: any;
@@ -106,18 +107,25 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
 
       const selectedSplitCount = existingSplits.length;
       const expectedEqualShare = selectedSplitCount > 0 ? 100 / selectedSplitCount : 0;
-      const isEqualSplit = selectedSplitCount > 0 && existingSplits.every((split) => {
-        const percent = split.share != null
-          ? split.share * 100
-          : (Number(split.amount) / (Number(expense?.amount) || 1)) * 100;
-        return Math.abs(percent - expectedEqualShare) <= 0.01;
+      const expenseAmount = Number(expense?.amount) || 0;
+      const expectedEqualAmount = selectedSplitCount > 0 ? expenseAmount / selectedSplitCount : 0;
+      const isEqualByShare = selectedSplitCount > 0 && existingSplits.every((split) => {
+        if (split.share == null) return false;
+        return Math.abs((split.share * 100) - expectedEqualShare) <= 0.01;
       });
+      const isEqualByAmount = selectedSplitCount > 0 && existingSplits.every((split) => {
+        return Math.abs(Number(split.amount) - expectedEqualAmount) <= 0.01;
+      });
+      const isEqualSplit = isEqualByShare || isEqualByAmount;
+
+      const selectedSplitIds = existingSplits.map((split) => split.user_id);
 
       setSelectedMap(init);
-      setSharesMap(nextShares);
+      setSharesMap(isEqualSplit ? computeEqualShares(selectedSplitIds) : nextShares);
       setSplitMode(isEqualSplit ? 'equal' : 'shares');
       setManualShares(!isEqualSplit);
       setLockedMap(isEqualSplit ? {} : Object.fromEntries(existingSplits.map((split) => [split.user_id, true])));
+      setAmountDraftMap({});
       return;
     }
 
@@ -138,10 +146,21 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
     return isNaN(n) ? 0 : n;
   }, [amount]);
 
-  const equalSplitAmount = useMemo(() => {
-    if (splitMode !== 'equal' || selectedIds.length === 0) return 0;
-    return amountNumber / selectedIds.length;
-  }, [splitMode, amountNumber, selectedIds.length]);
+  const equalSplitAmounts = useMemo(() => {
+    if (splitMode !== 'equal') return {};
+    return distributeAmountEvenly(amountNumber, selectedIds);
+  }, [splitMode, amountNumber, selectedIds]);
+
+  const customShareAmounts = useMemo(() => {
+    if (splitMode !== 'shares') return {};
+    return distributeAmountByWeights(
+      amountNumber,
+      selectedIds.map((id) => ({
+        id,
+        weight: parseFloat(sharesMap[id] ?? '0') || 0,
+      }))
+    );
+  }, [splitMode, amountNumber, selectedIds, sharesMap]);
 
   // Compute totals directly to ensure live updates even mid-typing
   const computeTotals = () => {
@@ -156,8 +175,7 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
           const v = parseFloat(amountDraftMap[id] || '0') || 0;
           return sum + v;
         }
-        const pct = parseFloat(sharesMap[id] ?? '0') || 0;
-        return sum + (amountNumber * pct) / 100;
+        return sum + (customShareAmounts[id] ?? 0);
       }, 0);
       const pct = amountNumber > 0 ? (dollars / amountNumber) * 100 : 0;
       return { dollars, pct };
@@ -348,7 +366,14 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
                   styles.splitModeButton,
                   splitMode === 'equal' && styles.activeSplitMode,
                 ]}
-                onPress={() => setSplitMode('equal')}
+                onPress={() => {
+                  setSplitMode('equal');
+                  setSharesMap(prev => ({ ...prev, ...computeEqualShares(selectedIds) }));
+                  setManualShares(false);
+                  setLockedMap({});
+                  setLastEditedId(null);
+                  setAmountDraftMap({});
+                }}
               >
                 <Text
                   style={[
@@ -454,7 +479,14 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
 
                       setSelectedMap(nextSelectedMap);
 
-                      if (splitMode === 'shares') {
+                      if (splitMode === 'equal') {
+                        const eq = computeEqualShares(nextSelectedIds);
+                        setSharesMap(prev => ({ ...prev, ...eq }));
+                        setManualShares(false);
+                        setLockedMap({});
+                        setLastEditedId(null);
+                        setAmountDraftMap({});
+                      } else if (splitMode === 'shares') {
                         if (!manualShares) {
                           const eq = computeEqualShares(nextSelectedIds);
                           setSharesMap(prev => ({ ...prev, ...eq }));
@@ -505,9 +537,7 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
                     <View style={styles.memberRight}>
                       {splitMode === 'equal' && selected ? (
                         <Text style={styles.memberAmount}>
-                          ${(
-                            equalSplitAmount
-                          ).toFixed(2)}
+                          ${(equalSplitAmounts[id] ?? 0).toFixed(2)}
                         </Text>
                       ) : null}
                       {splitMode === 'shares' && selected && inputMode === 'percent' ? (
@@ -563,7 +593,7 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
                             value={
                               amountDraftMap[id] !== undefined
                                 ? amountDraftMap[id]
-                                : ((amountNumber * ((parseFloat(sharesMap[id] ?? '0') || 0)) / 100) || 0).toFixed(2)
+                                : (customShareAmounts[id] ?? 0).toFixed(2)
                             }
                             selectTextOnFocus={true}
                             editable={amountNumber > 0}
@@ -627,7 +657,14 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
 
                           setSelectedMap(prev => ({ ...prev, [id]: val }));
 
-                          if (splitMode === 'shares') {
+                          if (splitMode === 'equal') {
+                            const eq = computeEqualShares(nextSelectedIds);
+                            setSharesMap(prev => ({ ...prev, ...eq }));
+                            setManualShares(false);
+                            setLockedMap({});
+                            setLastEditedId(null);
+                            setAmountDraftMap({});
+                          } else if (splitMode === 'shares') {
                             if (!manualShares) {
                               // equalize among next selection
                               const eq = computeEqualShares(nextSelectedIds);

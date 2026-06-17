@@ -72,6 +72,54 @@ function isDateString(value: unknown) {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
+function distributeAmountCents(totalAmount: number, count: number) {
+  if (count <= 0) return [];
+
+  const totalCents = Math.round(totalAmount * 100);
+  const baseCents = Math.floor(totalCents / count);
+  const remainderCents = totalCents - baseCents * count;
+
+  return Array.from({ length: count }, (_, idx) =>
+    (baseCents + (idx < remainderCents ? 1 : 0)) / 100
+  );
+}
+
+function distributeAmountByWeights(
+  totalAmount: number,
+  items: { id: string; weight: number }[],
+) {
+  const result: Record<string, number> = {};
+  const weightedItems = items.filter((item) => item.weight > 0);
+  if (weightedItems.length === 0) return result;
+
+  const totalCents = Math.round(totalAmount * 100);
+  const totalWeight = weightedItems.reduce((sum, item) => sum + item.weight, 0);
+  const allocations = weightedItems.map((item, idx) => {
+    const rawCents = (totalCents * item.weight) / totalWeight;
+    return {
+      id: item.id,
+      cents: Math.floor(rawCents),
+      remainder: rawCents - Math.floor(rawCents),
+      idx,
+    };
+  });
+
+  let remainingCents = totalCents - allocations.reduce((sum, item) => sum + item.cents, 0);
+  [...allocations]
+    .sort((a, b) => (b.remainder - a.remainder) || (a.idx - b.idx))
+    .forEach((item) => {
+      if (remainingCents <= 0) return;
+      item.cents += 1;
+      remainingCents -= 1;
+    });
+
+  allocations.forEach((item) => {
+    result[item.id] = item.cents / 100;
+  });
+
+  return result;
+}
+
 async function getOrCreateProfileForAuthUser(admin: ReturnType<typeof createClient>, user: User) {
   const { data: existing, error: selectError } = await admin
     .from("profiles")
@@ -196,9 +244,9 @@ serve(async (req) => {
     if (splitMode === "equal") {
       const memberCount = uniqueParticipantIds.length;
       const share = 1 / memberCount;
-      const splitAmount = amount / memberCount;
-      for (const userId of uniqueParticipantIds) {
-        splits.push({ user_id: userId, share, amount: splitAmount });
+      const splitAmounts = distributeAmountCents(amount, memberCount);
+      for (const [idx, userId] of uniqueParticipantIds.entries()) {
+        splits.push({ user_id: userId, share, amount: splitAmounts[idx] });
       }
     } else {
       if (shares.length === 0) return badRequest("Custom shares are required");
@@ -225,12 +273,20 @@ serve(async (req) => {
       const totalShares = normalizedShares.reduce((sum, share) => sum + share.share, 0);
       if (totalShares <= 0) return badRequest("Total shares must be greater than zero");
 
+      const shareAmounts = distributeAmountByWeights(
+        amount,
+        normalizedShares.map((share) => ({
+          id: share.user_id as string,
+          weight: share.share,
+        })),
+      );
+
       for (const share of normalizedShares) {
         const ratio = share.share / totalShares;
         splits.push({
           user_id: share.user_id,
           share: ratio,
-          amount: ratio * amount,
+          amount: shareAmounts[share.user_id as string] ?? 0,
         });
       }
     }
