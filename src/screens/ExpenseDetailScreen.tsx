@@ -11,6 +11,8 @@ import {
 import { Expense, Group } from '../types/db';
 import { useDeleteExpense } from '../hooks/useDeleteExpense';
 import { useExpenseSplits } from '../hooks/useExpenseSplits';
+import { useMembers } from '../hooks/useMembers';
+import { useProfile } from '../contexts/ProfileContext';
 
 interface Props {
   navigation: any;
@@ -25,15 +27,17 @@ interface Props {
 }
 
 export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
-  const { expense, group, creatorDisplayName } = route.params;
+  const { expense, group, creatorDisplayName, fromKey } = route.params;
   const { deleteExpense, loading: deleting, error: deleteError } = useDeleteExpense();
   const { splits, loading: splitsLoading, error: splitsError } = useExpenseSplits(expense.id);
   const formatDate = (date: string | null) =>
     date ? new Date(date).toLocaleDateString() : 'Unknown';
+  const { profileId } = useProfile();
+  const { isCurrentUserAdmin } = useMembers(group.id);
+  const canManageExpense = expense.created_by === profileId || isCurrentUserAdmin;
 
   const handleEditExpense = () => {
-    // TODO: Implement edit expense functionality
-    Alert.alert('Coming Soon', 'Edit expense functionality will be available soon!');
+    navigation.navigate('AddExpense', { group, expense, fromKey });
   };
 
   const handleDeleteExpense = () => {
@@ -130,20 +134,28 @@ export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Actions</Text>
-          <TouchableOpacity style={styles.actionButton} onPress={handleEditExpense}>
-            <Text style={styles.actionButtonText}>Edit Expense</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.deleteButton]}
-            onPress={handleDeleteExpense}
-            disabled={deleting}
-          >
-            {deleting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.deleteButtonText}>Delete Expense</Text>
-            )}
-          </TouchableOpacity>
+          {canManageExpense ? (
+            <>
+              <TouchableOpacity style={styles.actionButton} onPress={handleEditExpense}>
+                <Text style={styles.actionButtonText}>Edit Expense</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.deleteButton]}
+                onPress={handleDeleteExpense}
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.deleteButtonText}>Delete Expense</Text>
+                )}
+              </TouchableOpacity>
+            </>
+          ) : (
+            <Text style={styles.actionNote}>
+              Only the expense creator or a group admin can edit this expense.
+            </Text>
+          )}
         </View>
 
         <View style={styles.section}>
@@ -290,6 +302,11 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  actionNote: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
   },
   settlementsContainer: {
     padding: 16,

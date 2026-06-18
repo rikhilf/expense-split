@@ -9,8 +9,8 @@ export type AppStackParamList = {
   GroupList: { invalidate?: true; flash?: string } | undefined;
   CreateGroup: undefined;
   GroupDetail: { group: Group; flash?: string; invalidate?: 'expenses' | 'members' | true };
-  AddExpense: { group: Group };
-  ExpenseDetail: { expense: Expense; group: Group };
+  AddExpense: { group: Group; expense?: Expense; fromKey?: string };
+  ExpenseDetail: { expense: Expense; group: Group; creatorDisplayName?: string | null; fromKey?: string };
   MemberProfile: {
     groupId: string;
     profile: {
