@@ -257,8 +257,8 @@ serve(async (req) => {
         share: typeof share.share === "number" ? share.share : Number(share.share),
       }));
 
-      if (!normalizedShares.every((share) => isUuid(share.user_id) && Number.isFinite(share.share) && share.share > 0)) {
-        return badRequest("Each custom share must include a valid user_id and positive share");
+      if (!normalizedShares.every((share) => isUuid(share.user_id) && Number.isFinite(share.share) && share.share >= 0)) {
+        return badRequest("Each custom share must include a valid user_id and non-negative share");
       }
 
       const participantSet = new Set(uniqueParticipantIds);
