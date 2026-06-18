@@ -67,10 +67,14 @@ export const useAddExpense = () => {
         return null;
       }
 
-      // Apply participant filter if provided
+      // Apply participant filter if provided, preserving the UI order so
+      // remainder cents are saved for the same people shown in the preview.
+      const membershipsByUserId = new Map(memberships.map(m => [m.user_id, m]));
       const selectedMemberships = expenseData.participantIds && expenseData.participantIds.length > 0
-        ? memberships.filter(m => expenseData.participantIds!.includes(m.user_id))
-        : memberships;
+        ? expenseData.participantIds
+            .map(userId => membershipsByUserId.get(userId))
+            .filter((membership): membership is { user_id: string } => !!membership)
+        : [...memberships].sort((a, b) => a.user_id.localeCompare(b.user_id));
 
       if (!selectedMemberships || selectedMemberships.length === 0) {
         setError('At least one participant must be selected');

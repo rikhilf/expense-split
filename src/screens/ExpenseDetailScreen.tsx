@@ -34,7 +34,7 @@ export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
     date ? new Date(date).toLocaleDateString() : 'Unknown';
   const { profileId } = useProfile();
   const { isCurrentUserAdmin } = useMembers(group.id);
-  const canManageExpense = expense.created_by === profileId || isCurrentUserAdmin || group.created_by === profileId;
+  const canManageExpense = expense.created_by === profileId || isCurrentUserAdmin;
 
   const handleEditExpense = () => {
     navigation.navigate('AddExpense', { group, expense, fromKey });

@@ -87,7 +87,7 @@ describe('useAddExpense', () => {
     expect(splitsInsert).toHaveBeenCalledWith(expectedSplits);
   });
 
-  it('allocates remainder cents for uneven equal splits', async () => {
+  it('allocates remainder cents using participant order for uneven equal splits', async () => {
     (useProfile as jest.Mock).mockReturnValue({
       profileId: 'p1',
       loading: false,
@@ -100,7 +100,7 @@ describe('useAddExpense', () => {
     const expenseInsert = jest.fn(() => ({ select: () => ({ single: jest.fn().mockResolvedValue({ data: expense, error: null }) }) }));
     const membershipsSelect = jest.fn(() => ({
       eq: jest.fn().mockResolvedValue({
-        data: [{ user_id: 'u1' }, { user_id: 'u2' }, { user_id: 'u3' }],
+        data: [{ user_id: 'u3' }, { user_id: 'u1' }, { user_id: 'u2' }],
         error: null,
       }),
     }));
@@ -121,6 +121,7 @@ describe('useAddExpense', () => {
         amount: 20,
         date: '2020-01-01',
         splitMode: 'equal',
+        participantIds: ['u1', 'u2', 'u3'],
       });
     });
 

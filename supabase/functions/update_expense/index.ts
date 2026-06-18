@@ -219,10 +219,11 @@ serve(async (req) => {
 
     if (callerMembershipError) throw callerMembershipError;
 
-    const canEdit =
+    const isCurrentMember = !!callerMembership;
+    const canEdit = isCurrentMember && (
       expense.created_by === profile.id ||
-      group.created_by === profile.id ||
-      callerMembership?.role === "admin";
+      callerMembership.role === "admin"
+    );
 
     if (!canEdit) return forbidden("Only the expense creator or a group admin can edit this expense");
 
