@@ -261,28 +261,29 @@ serve(async (req) => {
         return badRequest("Each custom share must include a valid user_id and non-negative share");
       }
 
+      const positiveShares = normalizedShares.filter((share) => share.share > 0);
       const participantSet = new Set(uniqueParticipantIds);
-      const shareUserIds = normalizedShares.map((share) => share.user_id as string);
+      const shareUserIds = positiveShares.map((share) => share.user_id as string);
       const shareUserSet = new Set(shareUserIds);
       if (
         shareUserSet.size !== uniqueParticipantIds.length ||
         !shareUserIds.every((userId) => participantSet.has(userId))
       ) {
-        return badRequest("Custom shares must match selected participants");
+        return badRequest("Positive custom shares must match selected participants");
       }
 
-      const totalShares = normalizedShares.reduce((sum, share) => sum + share.share, 0);
+      const totalShares = positiveShares.reduce((sum, share) => sum + share.share, 0);
       if (totalShares <= 0) return badRequest("Total shares must be greater than zero");
 
       const shareAmounts = distributeAmountByWeights(
         amount,
-        normalizedShares.map((share) => ({
+        positiveShares.map((share) => ({
           id: share.user_id as string,
           weight: share.share,
         })),
       );
 
-      for (const share of normalizedShares) {
+      for (const share of positiveShares) {
         const ratio = share.share / totalShares;
         splits.push({
           user_id: share.user_id,

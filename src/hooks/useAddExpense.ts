@@ -98,7 +98,8 @@ export const useAddExpense = () => {
           amount: shareAmounts[membership.user_id]
         }));
       } else if (expenseData.splitMode === 'shares' && expenseData.shares) {
-        const totalShares = expenseData.shares.reduce((sum, share) => sum + share.share, 0);
+        const positiveShares = expenseData.shares.filter(share => share.share > 0);
+        const totalShares = positiveShares.reduce((sum, share) => sum + share.share, 0);
         if (!totalShares || totalShares <= 0) {
           setError('Total shares must be greater than zero');
           return null;
@@ -106,13 +107,13 @@ export const useAddExpense = () => {
 
         const shareAmounts = distributeAmountByWeights(
           expenseData.amount,
-          expenseData.shares.map((share) => ({
+          positiveShares.map((share) => ({
             id: share.userId,
             weight: share.share,
           }))
         );
         
-        splits = expenseData.shares.map(share => ({
+        splits = positiveShares.map(share => ({
           expense_id: expense.id,
           user_id: share.userId,
           share: share.share / totalShares,

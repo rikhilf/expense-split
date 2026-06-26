@@ -8,7 +8,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 // supabase/functions/delete_group_if_last_member/index.ts
 //
 // Removes the caller's membership in a group. If the caller is the last
-// authenticated member, deletes the group (and cascades all related data).
+// non-placeholder member, deletes the group (and cascades all related data).
 //
 // Auth: requires a valid user JWT in Authorization: Bearer <token>
 // DB: uses the service role key to perform writes safely (bypasses RLS).
@@ -39,6 +39,10 @@ const json = (data: unknown, init: ResponseInit = {}) =>
 const badRequest = (msg: string) => json({ error: msg }, { status: 400 });
 const unauthorized = () => json({ error: "Unauthorized" }, { status: 401 });
 const forbidden = (msg = "Forbidden") => json({ error: msg }, { status: 403 });
+const MEMBER_HAS_SPLITS_MESSAGE =
+  "You still have expense splits in this group. Edit the expense to reallocate those splits before leaving.";
+const GROUP_HAS_EXPENSES_MESSAGE =
+  "You are the last non-placeholder member, and this group still has expenses. Edit expenses to reallocate open splits before deleting the group.";
 
 function bearer(req: Request) {
   const h = req.headers.get("authorization") || req.headers.get("Authorization") || "";
@@ -47,6 +51,7 @@ function bearer(req: Request) {
 
 type Payload = {
   group_id?: string;
+  confirm_delete_with_expenses?: boolean;
 };
 
 serve(async (req) => {
@@ -70,6 +75,7 @@ serve(async (req) => {
 
     const body = (await req.json().catch(() => ({}))) as Payload;
     const group_id = body.group_id?.trim();
+    const confirmDeleteWithExpenses = body.confirm_delete_with_expenses === true;
     if (!group_id) return badRequest("Missing 'group_id'");
 
     // Resolve caller profile
@@ -95,7 +101,7 @@ serve(async (req) => {
 
     if (!membership) return forbidden("Caller is not a member of this group");
 
-    // Count authenticated members to avoid client-side race conditions
+    // Count non-placeholder members to avoid client-side race conditions
     const { count, error: countErr } = await admin
       .from("memberships")
       .select("id", { count: "exact", head: true })
@@ -103,11 +109,53 @@ serve(async (req) => {
       .eq("authenticated", true);
 
     if (countErr) {
-      return json({ error: "Failed to count authenticated members" }, { status: 500 });
+      return json({ error: "Failed to count non-placeholder members" }, { status: 500 });
     }
 
     const authenticatedCount = count ?? 0;
     const shouldDeleteGroup = membership.authenticated && authenticatedCount === 1;
+
+    const { data: groupExpenses, error: expensesError } = await admin
+      .from("expenses")
+      .select("id")
+      .eq("group_id", group_id);
+
+    if (expensesError) {
+      return json({ error: "Failed to look up group expenses" }, { status: 500 });
+    }
+
+    const expenseIds = (groupExpenses ?? []).map((expense) => expense.id);
+
+    if (expenseIds.length > 0) {
+      if (shouldDeleteGroup && !confirmDeleteWithExpenses) return forbidden(GROUP_HAS_EXPENSES_MESSAGE);
+      if (shouldDeleteGroup) {
+        const { error: deleteGroupErr } = await admin
+          .from("groups")
+          .delete()
+          .eq("id", group_id);
+
+        if (deleteGroupErr) {
+          return json({ error: "Failed to delete group" }, { status: 500 });
+        }
+
+        return json({ deleted_group: true }, { status: 200 });
+      }
+
+      const { data: existingSplits, error: splitsError } = await admin
+        .from("expense_splits")
+        .select("id")
+        .eq("user_id", callerProfile.id)
+        .in("expense_id", expenseIds)
+        .limit(1);
+
+      if (splitsError) {
+        return json({ error: "Failed to check member expense splits" }, { status: 500 });
+      }
+
+      if ((existingSplits ?? []).length > 0) {
+        return forbidden(MEMBER_HAS_SPLITS_MESSAGE);
+      }
+    }
 
     if (shouldDeleteGroup) {
       const { error: deleteGroupErr } = await admin
@@ -120,29 +168,6 @@ serve(async (req) => {
       }
 
       return json({ deleted_group: true }, { status: 200 });
-    }
-
-    // Remove the caller's splits from this group before deleting membership
-    const { data: groupExpenses, error: expensesError } = await admin
-      .from("expenses")
-      .select("id")
-      .eq("group_id", group_id);
-
-    if (expensesError) {
-      return json({ error: "Failed to look up group expenses" }, { status: 500 });
-    }
-
-    const expenseIds = (groupExpenses ?? []).map((expense) => expense.id);
-    if (expenseIds.length > 0) {
-      const { error: deleteSplitsError } = await admin
-        .from("expense_splits")
-        .delete()
-        .eq("user_id", callerProfile.id)
-        .in("expense_id", expenseIds);
-
-      if (deleteSplitsError) {
-        return json({ error: "Failed to remove member splits" }, { status: 500 });
-      }
     }
 
     const { error: deleteMembershipErr } = await admin
