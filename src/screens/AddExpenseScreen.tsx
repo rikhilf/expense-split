@@ -539,12 +539,34 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
 
                       if (splitMode === 'equal') {
                         const eq = computeEqualShares(nextSelectedIds);
-                        setSharesMap(prev => ({ ...prev, ...eq }));
+                        setSharesMap(prev => {
+                          const next = { ...prev };
+                          if (allSelected) {
+                            members.forEach(m => {
+                              delete next[m.user_id];
+                            });
+                          }
+                          return { ...next, ...eq };
+                        });
                         setManualShares(false);
                         setLockedMap({});
                         setLastEditedId(null);
                         setAmountDraftMap({});
                       } else if (splitMode === 'shares') {
+                        if (allSelected) {
+                          setSharesMap(prev => {
+                            const next = { ...prev };
+                            members.forEach(m => {
+                              delete next[m.user_id];
+                            });
+                            return next;
+                          });
+                          setLockedMap({});
+                          setLastEditedId(null);
+                          setAmountDraftMap({});
+                          return;
+                        }
+
                         if (!manualShares) {
                           const eq = computeEqualShares(nextSelectedIds);
                           setSharesMap(prev => ({ ...prev, ...eq }));
@@ -602,7 +624,7 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
                         <View style={styles.percentInputWrapper}>
                           <TextInput
                             style={styles.percentInput}
-                            value={sharesMap[id] ?? '0.00'}
+                            value={selected ? (sharesMap[id] ?? '0.00') : '0.00'}
                             selectTextOnFocus={true}
                             onChangeText={(text) => {
                               // Sanitize to numeric with up to 2 decimals
@@ -675,12 +697,25 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
                           const nextSelectedIds = val
                             ? Array.from(new Set([...selectedIds, id]))
                             : selectedIds.filter(x => x !== id);
+                          const nextLockedMap = { ...lockedMap };
+                          if (!val) {
+                            delete nextLockedMap[id];
+                            setAmountDraftMap(prev => {
+                              const next = { ...prev };
+                              delete next[id];
+                              return next;
+                            });
+                          }
 
                           setSelectedMap(prev => ({ ...prev, [id]: val }));
 
                           if (splitMode === 'equal') {
                             const eq = computeEqualShares(nextSelectedIds);
-                            setSharesMap(prev => ({ ...prev, ...eq }));
+                            setSharesMap(prev => {
+                              const next = { ...prev };
+                              if (!val) delete next[id];
+                              return { ...next, ...eq };
+                            });
                             setManualShares(false);
                             setLockedMap({});
                             setLastEditedId(null);
@@ -689,20 +724,29 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
                             if (!manualShares) {
                               // equalize among next selection
                               const eq = computeEqualShares(nextSelectedIds);
-                              setSharesMap(prev => ({ ...prev, ...eq }));
+                              setSharesMap(prev => {
+                                const next = { ...prev };
+                                if (!val) delete next[id];
+                                return { ...next, ...eq };
+                              });
                               setLockedMap({});
                               setLastEditedId(null);
                             } else {
                               // keep locked, rebalance remaining among next selection
-                              const lockedIds = nextSelectedIds.filter(x => lockedMap[x]);
-                              const unlockedIds = nextSelectedIds.filter(x => !lockedMap[x]);
+                              const lockedIds = nextSelectedIds.filter(x => nextLockedMap[x]);
+                              const unlockedIds = nextSelectedIds.filter(x => !nextLockedMap[x]);
                               const lockedUnits = lockedIds.reduce((sum, x) => {
                                 const v = Math.round(((parseFloat(sharesMap[x] ?? '0') || 0) * 100));
                                 return sum + v;
                               }, 0);
                               const remainderUnits = Math.max(0, 10000 - lockedUnits);
                               const distributed = distributeUnits(unlockedIds, remainderUnits);
-                              setSharesMap(prev => ({ ...prev, ...distributed }));
+                              setLockedMap(nextLockedMap);
+                              setSharesMap(prev => {
+                                const next = { ...prev };
+                                if (!val) delete next[id];
+                                return { ...next, ...distributed };
+                              });
                             }
                           }
                         }}
