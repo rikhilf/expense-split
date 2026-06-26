@@ -232,10 +232,14 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
     if (isYou) {
       const authenticatedCount = members.filter(member => member.authenticated).length;
       const isLastAuthenticatedMember = !!target?.authenticated && authenticatedCount === 1;
+      const hasGroupExpenses = displayExpenses.length > 0 || (expenses ?? []).length > 0;
+
       const confirmTitle = isLastAuthenticatedMember ? 'Delete Group' : 'Leave Group';
-      const confirmBody = isLastAuthenticatedMember
-        ? 'You are the last authenticated member. Leaving will permanently delete this group and all related data.'
-        : 'Are you sure you want to leave the group?';
+      const confirmBody = isLastAuthenticatedMember && hasGroupExpenses
+        ? 'You are the last non-placeholder member, and this group still has expenses. Leaving will permanently delete the group and all expense history. Do you want to proceed?'
+        : isLastAuthenticatedMember
+          ? 'You are the last non-placeholder member. Are you sure you want to leave and delete the group?'
+          : 'Are you sure you want to leave the group?';
       const confirmAction = isLastAuthenticatedMember ? 'Delete Group' : 'Leave';
 
       Alert.alert(
@@ -247,7 +251,9 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
             text: confirmAction,
             style: 'destructive',
             onPress: async () => {
-              const result = await leaveGroup();
+              const result = await leaveGroup({
+                confirmDeleteWithExpenses: isLastAuthenticatedMember && hasGroupExpenses,
+              });
               if (result.ok) {
                 const flashText = result.deletedGroup ? 'Group deleted.' : 'You left the group.';
                 navigation.navigate('GroupList', { invalidate: true, flash: flashText });
@@ -269,7 +275,12 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         {
           text: 'Remove',
           style: 'destructive',
-          onPress: () => void removeMember(membershipId),
+          onPress: async () => {
+            const result = await removeMember(membershipId);
+            if (!result.ok) {
+              Alert.alert('Unable to Remove Member', result.error ?? 'Failed to remove member.');
+            }
+          },
         },
       ]
     );

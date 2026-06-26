@@ -247,6 +247,51 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
     setAmount(sanitized);
   };
 
+  const applyCustomShareUnitsChange = (id: string, units: number, value: string) => {
+    const nextSelectedIds = units > 0
+      ? Array.from(new Set([...selectedIds, id]))
+      : selectedIds.filter(x => x !== id);
+    const nextLockedMap = { ...lockedMap };
+
+    if (units > 0) {
+      nextLockedMap[id] = true;
+    } else {
+      delete nextLockedMap[id];
+    }
+
+    const lockedIds = nextSelectedIds.filter(x => nextLockedMap[x]);
+    const unlockedIds = nextSelectedIds.filter(x => !nextLockedMap[x]);
+
+    const lockedUnits = lockedIds.reduce((sum, x) => {
+      if (x === id) return sum + units;
+      const v = Math.round(((parseFloat(sharesMap[x] ?? '0') || 0) * 100));
+      return sum + v;
+    }, 0);
+    const remainderUnits = Math.max(0, 10000 - lockedUnits);
+    const distributed = distributeUnits(unlockedIds, remainderUnits);
+
+    setManualShares(true);
+    setLastEditedId(units > 0 ? id : null);
+    setSelectedMap(prev => ({ ...prev, [id]: units > 0 }));
+    setLockedMap(nextLockedMap);
+    if (units <= 0) {
+      setAmountDraftMap(prev => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
+    setSharesMap(prev => {
+      const next = { ...prev };
+      if (units > 0) {
+        next[id] = value;
+      } else {
+        delete next[id];
+      }
+      return { ...next, ...distributed };
+    });
+  };
+
   const handleSubmitExpense = async () => {
     if (!description.trim() || !amount.trim()) {
       Alert.alert('Error', 'Please fill in all required fields');
@@ -269,19 +314,32 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
       return;
     }
 
+    const customShares = selectedIds
+      .map((id) => ({
+        userId: id,
+        share: parseFloat(sharesMap[id] ?? '0') || 0,
+      }))
+      .filter((share) => share.share > 0);
+
+    if (splitMode === 'shares' && customShares.length === 0) {
+      Alert.alert('Invalid Shares', 'Please assign a positive share to at least one participant.');
+      return;
+    }
+
+    const participantIds = splitMode === 'shares'
+      ? customShares.map((share) => share.userId)
+      : selectedIds;
+
     try {
       const expenseData = {
         description: description.trim(),
         amount: numericAmount,
         date,
         splitMode,
-        participantIds: selectedIds,
+        participantIds,
         ...(splitMode === 'shares'
           ? {
-              shares: selectedIds.map((id) => ({
-                userId: id,
-                share: parseFloat(sharesMap[id] ?? '0') || 0,
-              })),
+              shares: customShares,
             }
           : {}),
       };
@@ -540,11 +598,11 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
                           ${(equalSplitAmounts[id] ?? 0).toFixed(2)}
                         </Text>
                       ) : null}
-                      {splitMode === 'shares' && selected && inputMode === 'percent' ? (
+                      {splitMode === 'shares' && inputMode === 'percent' ? (
                         <View style={styles.percentInputWrapper}>
                           <TextInput
                             style={styles.percentInput}
-                            value={sharesMap[id] ?? ''}
+                            value={sharesMap[id] ?? '0.00'}
                             selectTextOnFocus={true}
                             onChangeText={(text) => {
                               // Sanitize to numeric with up to 2 decimals
@@ -558,26 +616,7 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
 
                               // Calculate distribution live while typing; do not clamp this field
                               const newUnitsForThis = Math.round(((parseFloat(sanitized || '0') || 0) * 100));
-                              const newLocked = { ...lockedMap, [id]: true };
-                              const lockedIds = selectedIds.filter(x => newLocked[x]);
-                              const unlockedIds = selectedIds.filter(x => !newLocked[x]);
-
-                              const lockedUnits = lockedIds.reduce((sum, x) => {
-                                if (x === id) return sum + newUnitsForThis;
-                                const v = Math.round(((parseFloat(sharesMap[x] ?? '0') || 0) * 100));
-                                return sum + v;
-                              }, 0);
-                              const remainderUnits = Math.max(0, 10000 - lockedUnits);
-                              const distributed = distributeUnits(unlockedIds, remainderUnits);
-
-                              setManualShares(true);
-                              setLastEditedId(id);
-                              setLockedMap(newLocked);
-                              setSharesMap(prev => ({
-                                ...prev,
-                                [id]: sanitized, // keep raw sanitized input; others receive fixed 2-decimal values
-                                ...distributed,
-                              }));
+                              applyCustomShareUnitsChange(id, newUnitsForThis, sanitized);
                             }}
                             placeholder="0"
                             keyboardType={Platform.OS === 'ios' ? 'decimal-pad' : 'numeric'}
@@ -585,7 +624,7 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
                           <Text style={styles.percentSuffix}>%</Text>
                         </View>
                       ) : null}
-                      {splitMode === 'shares' && selected && inputMode === 'amount' ? (
+                      {splitMode === 'shares' && inputMode === 'amount' ? (
                         <View style={styles.amountInputWrapper}>
                           <Text style={styles.dollarPrefix}>$</Text>
                           <TextInput
@@ -593,7 +632,9 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
                             value={
                               amountDraftMap[id] !== undefined
                                 ? amountDraftMap[id]
-                                : (customShareAmounts[id] ?? 0).toFixed(2)
+                                : selected
+                                  ? (customShareAmounts[id] ?? 0).toFixed(2)
+                                  : '0.00'
                             }
                             selectTextOnFocus={true}
                             editable={amountNumber > 0}
@@ -613,27 +654,7 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
                                 ? Math.round((amountVal / amountNumber) * 10000)
                                 : 0;
                               const newPercent = (newUnitsForThis / 100).toFixed(2);
-
-                              const newLocked = { ...lockedMap, [id]: true };
-                              const lockedIds = selectedIds.filter(x => newLocked[x]);
-                              const unlockedIds = selectedIds.filter(x => !newLocked[x]);
-
-                              const lockedUnits = lockedIds.reduce((sum, x) => {
-                                if (x === id) return sum + newUnitsForThis;
-                                const v = Math.round(((parseFloat(sharesMap[x] ?? '0') || 0) * 100));
-                                return sum + v;
-                              }, 0);
-                              const remainderUnits = Math.max(0, 10000 - lockedUnits);
-                              const distributed = distributeUnits(unlockedIds, remainderUnits);
-
-                              setManualShares(true);
-                              setLastEditedId(id);
-                              setLockedMap(newLocked);
-                              setSharesMap(prev => ({
-                                ...prev,
-                                [id]: newPercent,
-                                ...distributed,
-                              }));
+                              applyCustomShareUnitsChange(id, newUnitsForThis, newPercent);
                             }}
                             placeholder="0.00"
                             keyboardType={Platform.OS === 'ios' ? 'decimal-pad' : 'numeric'}

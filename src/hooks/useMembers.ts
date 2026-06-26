@@ -39,6 +39,28 @@ type LeaveGroupResult = {
   error?: string | null;
 };
 
+type LeaveGroupOptions = {
+  confirmDeleteWithExpenses?: boolean;
+};
+
+type RemoveMemberResult = {
+  ok: boolean;
+  error?: string | null;
+};
+
+const MEMBER_HAS_SPLITS_MESSAGE =
+  'This member still has expense splits in this group. Edit the expense to reallocate those splits before removing them.';
+
+const getFunctionErrorMessage = async (error: unknown, fallback: string) => {
+  const context = (error as { context?: { json?: () => Promise<unknown> } } | null)?.context;
+  const body = await context?.json?.().catch(() => null);
+  if (body && typeof body === 'object' && 'error' in body && typeof body.error === 'string') {
+    return body.error;
+  }
+
+  return error instanceof Error ? error.message : fallback;
+};
+
 export const useMembers = (groupId: string) => {
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -144,15 +166,15 @@ export const useMembers = (groupId: string) => {
     }
   };
 
-  const removeMember = async (membershipId: string) => {
+  const removeMember = async (membershipId: string): Promise<RemoveMemberResult> => {
     try {
       setError(null);
 
       // Find the target membership info from local state
       const target = members.find(m => m.id === membershipId);
       if (!target) {
-        setError('Could not find that member in this group.');
-        return false;
+        const message = 'Could not find that member in this group.';
+        return { ok: false, error: message };
       }
 
       const isPlaceholder = !target.authenticated;
@@ -163,30 +185,35 @@ export const useMembers = (groupId: string) => {
       // - Non-admins can remove placeholders
       // - Anyone can remove themselves (leave group)
       if (!isCurrentUserAdmin && !isPlaceholder && !isSelf) {
-        setError('Only a group admin can remove this group member');
-        return false;
+        const message = 'Only a group admin can remove this group member';
+        return { ok: false, error: message };
       }
 
-      // Before deleting the membership, remove any expense_splits for this user within this group
+      // Preserve expense history: block removal while this member still has splits in the group.
       const { data: groupExpenses, error: expensesError } = await supabase
         .from('expenses')
         .select('id')
         .eq('group_id', groupId);
       if (expensesError) {
-        setError(expensesError.message ?? 'Failed to look up group expenses');
-        return false;
+        const message = expensesError.message ?? 'Failed to look up group expenses';
+        return { ok: false, error: message };
       }
 
       const expenseIds = (groupExpenses ?? []).map(e => e.id);
       if (expenseIds.length > 0) {
-        const { error: deleteSplitsError } = await supabase
+        const { data: existingSplits, error: splitsError } = await supabase
           .from('expense_splits')
-          .delete()
+          .select('id')
           .eq('user_id', target.user_id)
-          .in('expense_id', expenseIds);
-        if (deleteSplitsError) {
-          setError(deleteSplitsError.message ?? 'Failed to remove member splits');
-          return false;
+          .in('expense_id', expenseIds)
+          .limit(1);
+        if (splitsError) {
+          const message = splitsError.message ?? 'Failed to check member expense splits';
+          return { ok: false, error: message };
+        }
+
+        if ((existingSplits ?? []).length > 0) {
+          return { ok: false, error: MEMBER_HAS_SPLITS_MESSAGE };
         }
       }
 
@@ -197,45 +224,45 @@ export const useMembers = (groupId: string) => {
         .eq('id', membershipId);
 
       if (deleteError) {
-        setError(deleteError.message);
+        const message = deleteError.message;
         console.error('Failed to delete membership:', deleteError);
-        return false;
+        return { ok: false, error: message };
       }
 
       setMembers(prev => prev.filter(m => m.id !== membershipId));
-      return true;
+      return { ok: true, error: null };
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-      return false;
+      const message = err instanceof Error ? err.message : 'An error occurred';
+      return { ok: false, error: message };
     }
   };
 
-  const leaveGroup = async (): Promise<LeaveGroupResult> => {
+  const leaveGroup = async (options: LeaveGroupOptions = {}): Promise<LeaveGroupResult> => {
     try {
       setError(null);
 
       if (!groupId) {
         const message = 'Missing group id.';
-        setError(message);
         return { ok: false, deletedGroup: false, error: message };
       }
 
       if (!profileId) {
         const message = 'Could not resolve your profile.';
-        setError(message);
         return { ok: false, deletedGroup: false, error: message };
       }
 
       const { data, error: fnError } = await supabase.functions.invoke<LeaveGroupResponse>(
         'delete_group_if_last_member',
         {
-          body: { group_id: groupId },
+          body: {
+            group_id: groupId,
+            confirm_delete_with_expenses: !!options.confirmDeleteWithExpenses,
+          },
         }
       );
 
       if (fnError) {
-        const message = fnError.message ?? 'Failed to leave group';
-        setError(message);
+        const message = await getFunctionErrorMessage(fnError, 'Failed to leave group');
         return { ok: false, deletedGroup: false, error: message };
       }
 
@@ -248,7 +275,6 @@ export const useMembers = (groupId: string) => {
       return { ok: true, deletedGroup, error: null };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'An error occurred';
-      setError(message);
       return { ok: false, deletedGroup: false, error: message };
     }
   };

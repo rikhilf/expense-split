@@ -184,4 +184,53 @@ describe('useAddExpense', () => {
 
     expect(splitsInsert).toHaveBeenCalledWith(expectedSplits);
   });
+
+  it('does not create split rows for zero custom shares', async () => {
+    (useProfile as jest.Mock).mockReturnValue({
+      profileId: 'p1',
+      loading: false,
+      error: null,
+      refresh: jest.fn(),
+      reset: jest.fn(),
+    });
+
+    const expense = { id: 'e1' };
+    const expenseInsert = jest.fn(() => ({ select: () => ({ single: jest.fn().mockResolvedValue({ data: expense, error: null }) }) }));
+    const membershipsSelect = jest.fn(() => ({
+      eq: jest.fn().mockResolvedValue({
+        data: [{ user_id: 'u1' }, { user_id: 'u2' }, { user_id: 'u3' }],
+        error: null,
+      }),
+    }));
+    const splitsInsert = jest.fn().mockResolvedValue({ error: null });
+
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'expenses') return { insert: expenseInsert };
+      if (table === 'memberships') return { select: membershipsSelect };
+      if (table === 'expense_splits') return { insert: splitsInsert };
+      return {} as any;
+    });
+
+    const { result } = renderHook(() => useAddExpense());
+
+    await act(async () => {
+      await result.current.addExpense('g1', {
+        description: 'd',
+        amount: 90,
+        date: '2020-01-01',
+        splitMode: 'shares',
+        participantIds: ['u1', 'u2', 'u3'],
+        shares: [
+          { userId: 'u1', share: 1 },
+          { userId: 'u2', share: 2 },
+          { userId: 'u3', share: 0 },
+        ],
+      });
+    });
+
+    expect(splitsInsert).toHaveBeenCalledWith([
+      { expense_id: 'e1', user_id: 'u1', share: 1 / 3, amount: 30 },
+      { expense_id: 'e1', user_id: 'u2', share: 2 / 3, amount: 60 },
+    ]);
+  });
 });
