@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-The Expo entry lives in `App.tsx`, while shared logic sits under `src/` (contexts, hooks, lib, navigation, screens, types). Supabase SQL, migrations, and triggers are tracked in `schema.sql` and `supabase/`. Edge Functions (`supabase/functions/*`) run with the service-role key for workflows such as group creation, inviting members, updating placeholder profiles, and deleting a group when the last authenticated member leaves. Assets (fonts, images) stay under `assets/`, and runtime config flows through `app.config.js` and `supabase.ts`.
+The Expo entry lives in `App.tsx`, while shared logic sits under `src/` (contexts, hooks, lib, navigation, screens, types). Supabase SQL, migrations, and triggers are tracked in `schema.sql` and `supabase/`. Edge Functions (`supabase/functions/*`) run with the service-role key for workflows such as group creation, inviting members, updating placeholder profiles, updating expenses, and deleting a group when the last authenticated member leaves. Assets (fonts, images) stay under `assets/`, and runtime config flows through `app.config.js` and `supabase.ts`.
 
 ## Build, Test, and Development Commands
 Run `npm run start` to launch the Metro bundler; use `npm run android`, `npm run ios`, or `npm run web` for the direct platform scripts. You can also append `--android`, `--ios`, or `--web` to `npm run start` if you prefer the Expo CLI flow. Use `npm test` (or `npm test -- --watch`) to execute Jest with the Expo preset. When editing SQL or Edge Functions, update Supabase locally (`supabase db push` or SQL console) before committing to keep the app and backend aligned.
