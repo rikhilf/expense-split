@@ -26,6 +26,7 @@ export const useUpdateExpense = () => {
             date: expenseData.date,
             split_mode: expenseData.splitMode,
             participant_ids: expenseData.participantIds ?? [],
+            ...(expenseData.paidBy ? { paid_by: expenseData.paidBy } : {}),
             shares: expenseData.shares?.map((share) => ({
               user_id: share.userId,
               share: share.share,

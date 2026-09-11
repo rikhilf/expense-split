@@ -4,6 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { GroupListScreen } from '../screens/GroupListScreen';
 import { CreateGroupScreen } from '../screens/CreateGroupScreen';
 import { GroupDetailScreen } from '../screens/GroupDetailScreen';
+import { GroupBalancesScreen } from '../screens/GroupBalancesScreen';
 import { AddExpenseScreen } from '../screens/AddExpenseScreen';
 import { ExpenseDetailScreen } from '../screens/ExpenseDetailScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
@@ -37,6 +38,15 @@ const HomeStackNavigator: React.FC = () => (
       name="GroupDetail"
       component={GroupDetailScreen}
       options={({ route }) => ({ title: route.params?.group?.name || 'Group' })}
+    />
+    <HomeStack.Screen
+      name="GroupBalances"
+      component={GroupBalancesScreen}
+      options={{
+        title: 'Balances & settlements',
+        headerBackTitleVisible: false,
+        headerBackImage: ({ tintColor }) => <Ionicons name="chevron-back" size={28} color={tintColor} style={{ marginHorizontal: 8 }} />,
+      }}
     />
     <HomeStack.Screen
       name="AddExpense"

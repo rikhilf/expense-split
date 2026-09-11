@@ -1,6 +1,93 @@
 # Project Goals and Feasibility
 
-Last reviewed: 2026-06-16
+Last reviewed: 2026-09-11
+
+## Settlement usability pass
+
+- Balances opens from a group-header button, alongside Expenses and Members navigation.
+- Expand each person's balance to inspect signed expense payments, assigned shares,
+  and confirmed settlement adjustments. Expense rows open the original expense.
+- Settlement entry uses a keyboard-aware bottom sheet with safe-area spacing.
+- Payment actions distinguish sending, recording receipt, and an admin recording
+  payments between other members. The recorder remains visible in history.
+- Personally paying another member's debt is a separate future product decision:
+  it must define whether reimbursement is owed to the third-party payer or gifted.
+  Recording on someone else's behalf does not itself transfer their debt.
+
+## Active trajectory
+
+### Settlement follow-up — implementation status (2026-09-11)
+
+Implemented: immediate manual records without the pending toggle, native iOS
+pageSheet, simplified admin recording, payment date, month/year history with older
+months available, and optional Pay now with editable one-payment recipient handles.
+Venmo uses a best-effort native payment route with HTTPS fallback; app handoff never
+records payment automatically. Ledger data is fetched in complete pages; history
+pagination currently limits rendering. Device handoff and sheet geometry still
+need physical-device acceptance. See SETTLEMENTS.md for exact behavior.
+
+The accepted design below remains context. Item 4 (personally covering someone
+else's debt) is explicitly deferred by the user. Actual retention deletion in item
+5 is deferred; no records are pruned. Existing pending entries remain resolvable.
+
+1. Simplify manual settlement entry to Review → Record payment. Record completed
+   payments immediately; remove the sent/completed toggle and the pending step
+   from new manual entries. Keep actor history and undo/void. Resolve existing
+   pending records explicitly (confirm or cancel); never silently confirm them.
+   Future bank/provider processing status must stay separate from manual records.
+2. Replace the hand-positioned transparent modal with an iOS-native sheet.
+   Evaluate React Native Modal's nontransparent pageSheet/formSheet first; use a
+   native-stack form sheet if adjustable resting heights are needed. The current
+   navigator is the JavaScript stack, not Expo Router/native-stack. Verify small
+   and large iPhones, iPad, keyboard, rotation, dismissal, and Android/web fallback.
+3. Simplify admin recording to actual payer, recipient, amount, payment date,
+   optional note, and review/save. Hide provider-launch controls and payment-method
+   selection in this flow; store an unspecified method rather than inventing cash.
+   Missing payment handles must never prevent a manual record. Current missing-
+   handle errors belong to opening a provider profile, not to saving a payment.
+4. Separately design “I paid for someone else.” Example: Alex owes Jordan $40;
+   Sam pays Jordan and expects reimbursement. Jordan is settled and Alex owes
+   Sam $40. Use one atomic, audited event representing actual funder, beneficiary,
+   recipient, and reimbursement effect; do not double-count a settlement and an
+   extra expense. This differs from Sam merely recording Alex's payment. Gift
+   treatment remains a separate decision. Existing debtor-only settlement limits
+   are insufficient for this flow and need explicit server-side design and tests.
+5. Group history by month/year, newest first, with pagination and “Load older”.
+   Add an actual payment date distinct from recorded-at for backdated entries.
+   Proposed initial display window: three months; retain older records for now.
+   Choose a retention duration later. Never just delete old settlements: balances
+   currently depend on them. Actual pruning needs verified per-profile opening
+   balances/checkpoints covering expenses and settlements, a historical correction
+   policy, and an export/archive path before removing detailed history.
+
+Research: Splitwise's published support response says recipient approval was
+removed due to friction, with activity history and notifications as alternatives:
+https://feedback.splitwise.com/forums/162446-general/suggestions/3864369-allow-receiver-to-confirm-payment-before-it-reflec
+Tricount documents recording reimbursement transfers without a recipient-approval
+step in that flow: https://help.tricount.com/articles/how-can-i-manage-my-tricounts-and-expenses
+Native presentation options: https://reactnative.dev/docs/modal#presentationstyle
+Adjustable native sheets: https://docs.expo.dev/router/advanced/modals/
+
+Acceptance for implementation: manual records immediately adjust balances once;
+retries and voids remain correct; no status toggle; admins can record without
+payment handles; existing pending entries remain resolvable; monthly pagination
+never changes balances; covering another person's debt produces the intended
+reimbursement obligation; native sheet remains usable with keyboard and safe areas.
+
+The immediate release is a reliable manual ledger and profile-based settlements,
+followed by bank transaction suggestions, recipient payment links, and receipt
+itemization. The detailed settlement behavior and verification checklist live in
+`SETTLEMENTS.md`. Settlement work precedes Plaid: imported purchases need a tested
+path through expense creation, balances, payment recording, and correction.
+
+The next automation release should connect accounts, collect possible shared
+purchases in a review inbox, and learn explicit merchant/group rules from user
+decisions. Only confirmed suggestions become shared expenses. Bank sync pricing
+must be evaluated against actual provider costs before promising a subscription
+price.
+
+Legacy ordering recommendations below are background research; this active
+trajectory takes precedence.
 
 Related planning note:
 

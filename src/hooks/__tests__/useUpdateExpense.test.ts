@@ -67,6 +67,7 @@ describe('useUpdateExpense', () => {
         amount: 120,
         date: '2026-06-16',
         splitMode: 'shares',
+        paidBy: 'placeholder-profile',
         participantIds: ['p1', 'p2'],
         shares: [
           { userId: 'p1', share: 25 },
@@ -78,6 +79,7 @@ describe('useUpdateExpense', () => {
     expect(supabase.functions.invoke).toHaveBeenCalledWith('update_expense', {
       body: expect.objectContaining({
         split_mode: 'shares',
+        paid_by: 'placeholder-profile',
         shares: [
           { user_id: 'p1', share: 25 },
           { user_id: 'p2', share: 75 },

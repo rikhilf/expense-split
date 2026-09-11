@@ -16,6 +16,7 @@ import { useUpdateExpense } from '../hooks/useUpdateExpense';
 import { useExpenseSplits } from '../hooks/useExpenseSplits';
 import { Expense, Group } from '../types/db';
 import { useMembers } from '../hooks/useMembers';
+import { useProfile } from '../contexts/ProfileContext';
 import { distributeAmountByWeights, distributeAmountEvenly } from '../lib/splitAmounts';
 
 interface Props {
@@ -61,9 +62,14 @@ const distributeUnits = (ids: string[], remainderUnits: number) => {
 export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
   const { group, expense } = route.params;
   const isEditMode = !!expense;
+  const { profileId } = useProfile();
+  const [paidBy, setPaidBy] = useState(expense?.paid_by ?? expense?.created_by ?? '');
+  useEffect(() => {
+    if (!paidBy && profileId) setPaidBy(profileId);
+  }, [paidBy, profileId]);
   const { addExpense, loading, error } = useAddExpense();
   const { updateExpense, loading: updating, error: updateError } = useUpdateExpense();
-  const { members, loading: membersLoading, error: membersError } = useMembers(group.id);
+  const { members, loading: membersLoading, error: membersError, isCurrentUserAdmin } = useMembers(group.id);
   const {
     splits: existingSplits,
     loading: existingSplitsLoading,
@@ -337,6 +343,7 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
         date,
         splitMode,
         participantIds,
+        paidBy,
         ...(splitMode === 'shares'
           ? {
               shares: customShares,
@@ -389,6 +396,28 @@ export const AddExpenseScreen: React.FC<Props> = ({ navigation, route }) => {
           </Text>
 
           <View style={styles.form}>
+            <Text style={styles.label}>Paid by *</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {members.map(member => (
+                <TouchableOpacity
+                  key={member.user_id}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: paidBy === member.user_id }}
+                  disabled={!isEditMode && !isCurrentUserAdmin && member.user_id !== profileId}
+                  onPress={() => setPaidBy(member.user_id)}
+                  style={[styles.splitModeButton, paidBy === member.user_id && styles.activeSplitMode]}
+                >
+                  <Text style={[styles.splitModeText, paidBy === member.user_id && styles.activeSplitModeText]}>
+                    {member.user?.display_name ?? 'Member'}{member.user_id === profileId ? ' (you)' : ''}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {isEditMode && (
+              <Text style={{ color: '#666', marginTop: 12 }}>
+                Changes recalculate group balances. Recorded payments remain in the history.
+              </Text>
+            )}
             <Text style={styles.label}>Description *</Text>
             <TextInput
               style={styles.input}
