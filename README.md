@@ -27,6 +27,8 @@ A mobile app for splitting expenses with friends, built with Expo (React Native)
 - Create groups and invite members (by email or placeholder names)
 - Add expenses and split per member
 - Record settlements that can cover multiple expenses
+- View group balances, record partial payments, confirm receipt, and void records with an audit trail
+- Select the expense payer independently from the person entering the expense
 - Store payment handles for Venmo, Cash App, and PayPal
 - Planned: public expense links so non-app participants can review and pay their share
 - Planned: receipt image parsing with item-level assignment to group members
@@ -36,6 +38,7 @@ A mobile app for splitting expenses with friends, built with Expo (React Native)
 ## Project Goals
 The current product direction and feasibility notes are documented in:
 - `PROJECT_GOALS.md`
+- `SETTLEMENTS.md` (implemented payment lifecycle, integrity rules, and tests)
 - `APPLE_INTELLIGENCE_NOTES.md`
 - `COMPETITOR_RESEARCH.md`
 

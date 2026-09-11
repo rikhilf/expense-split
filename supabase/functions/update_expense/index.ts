@@ -194,7 +194,7 @@ serve(async (req) => {
 
     const { data: expense, error: expenseError } = await admin
       .from("expenses")
-      .select("id, group_id, created_by")
+      .select("id, group_id, created_by, paid_by")
       .eq("id", expenseId)
       .maybeSingle();
 
@@ -226,6 +226,14 @@ serve(async (req) => {
     );
 
     if (!canEdit) return forbidden("Only the expense creator or a group admin can edit this expense");
+
+    const paidBy = body?.paid_by ?? expense.paid_by ?? expense.created_by;
+    if (!isUuid(paidBy)) return badRequest("Missing or invalid payer profile");
+    const { data: payerMembership, error: payerError } = await admin
+      .from("memberships").select("id").eq("group_id", expense.group_id)
+      .eq("user_id", paidBy).maybeSingle();
+    if (payerError) throw payerError;
+    if (!payerMembership) return badRequest("The payer must be a group member");
 
     const { data: participantMemberships, error: participantMembershipsError } = await admin
       .from("memberships")
@@ -301,6 +309,7 @@ serve(async (req) => {
         p_amount: amount,
         p_date: date,
         p_splits: splits,
+        p_paid_by: paidBy,
       },
     );
 

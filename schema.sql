@@ -20,6 +20,7 @@ create table profiles (
 create table groups (
   id uuid primary key default gen_random_uuid(),
   name text not null,
+  currency text not null default 'USD' check (currency = 'USD'),
   created_at timestamptz default timezone('utc', now()),
   created_by uuid not null references profiles(id)
 );
@@ -40,6 +41,7 @@ create table expenses (
   id uuid primary key default gen_random_uuid(),
   group_id uuid not null references groups(id) on delete cascade,
   created_by uuid not null references profiles(id), -- profiles.id so placeholder-aware app data stays profile-keyed
+  paid_by uuid not null references profiles(id), -- actual payer, separate from recorder
   description text,
   amount numeric not null,
   date date not null,
@@ -61,11 +63,26 @@ create table expense_splits (
 create table settlements (
   id uuid primary key default gen_random_uuid(),
   group_id uuid not null references groups(id) on delete cascade,
-  paid_by uuid not null, -- auth.users.id (logical; no FK)
-  paid_to uuid not null, -- auth.users.id (logical; no FK)
-  amount numeric not null,
+  paid_by uuid not null references profiles(id),
+  paid_to uuid not null references profiles(id),
+  amount numeric not null check (amount > 0 and amount < 1000000000 and amount = round(amount,2)),
+  status text not null default 'confirmed' check (status in ('pending','confirmed','voided')),
+  initial_status text not null default 'confirmed' check (initial_status in ('pending','confirmed')),
+  created_by uuid references profiles(id), -- nullable for imported legacy records only
+  confirmed_by uuid references profiles(id),
+  voided_by uuid references profiles(id),
+  created_at timestamptz not null default now(),
+  confirmed_at timestamptz,
+  voided_at timestamptz,
+  void_reason text,
+  payment_method text default 'other' check (payment_method in ('venmo','cashapp','paypal','cash','bank_transfer','other')),
+  payment_date date,
+  provider_reference text,
+  idempotency_key uuid,
   settled_at timestamptz default timezone('utc', now()),
-  note text
+  note text,
+  check (paid_by <> paid_to),
+  unique (created_by,idempotency_key)
 );
 
 -- SETTLEMENT_ITEMS (line items)
@@ -73,8 +90,13 @@ create table settlement_items (
   id uuid primary key default gen_random_uuid(),
   settlement_id uuid not null references settlements(id) on delete cascade,
   expense_id uuid not null references expenses(id) on delete cascade,
+  expense_split_id uuid references expense_splits(id), -- optional explanation; balances derive from settlement headers
   amount numeric not null
 );
+
+-- RPCs, RLS grants, and deferred ledger validation triggers are defined in
+-- supabase/migrations/20260910013850_implement_profile_settlements.sql.
+-- Clients create expenses atomically and mutate settlements exclusively by RPC.
 
 -- INVOICES (optional)
 create table invoices (

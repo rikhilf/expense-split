@@ -575,7 +575,12 @@ export const GroupDetailScreen: React.FC<Props> = ({ navigation, route }) => {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.groupName}>{group.name}</Text>
+          <View style={styles.titleRow}>
+            <Text style={[styles.groupName, { flex: 1, minWidth: 0 }]}>{group.name}</Text>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="View balances and settle up" style={styles.balancesButton} onPress={() => navigation.navigate('GroupBalances', { group })}>
+              <Text style={{ color: '#fff', fontWeight: '600' }}>Settle up</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.groupDate}>
             Created {group.created_at ? new Date(group.created_at).toLocaleDateString() : 'Unknown'}
           </Text>
@@ -745,6 +750,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
   },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  balancesButton: { flexShrink: 0, backgroundColor: '#007AFF', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10 },
   tabBar: {
     flexDirection: 'row',
     backgroundColor: '#fff',

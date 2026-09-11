@@ -1,150 +1,85 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { ExpenseInsert, ExpenseSplitInsert } from '../types/db';
 import { useProfile, getOrCreateProfileId } from '../contexts/ProfileContext';
 import { distributeAmountByWeights, distributeAmountEvenly } from '../lib/splitAmounts';
 
 export type SplitMode = 'equal' | 'shares';
-
 export type AddExpenseData = {
   description: string;
   amount: number;
   date: string;
   splitMode: SplitMode;
+  paidBy?: string;
   shares?: { userId: string; share: number }[];
-  // Optional: restrict the split to these user ids
   participantIds?: string[];
 };
 
 export const useAddExpense = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const busy = useRef(false);
   const { profileId } = useProfile();
 
-  const addExpense = async (groupId: string, expenseData: AddExpenseData) => {
+  const addExpense = async (groupId: string, input: AddExpenseData) => {
+    if (busy.current) return null;
+    busy.current = true;
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
-      // Resolve a profile id (prefer context, fallback to on-demand resolver)
-      const currentProfileId = profileId ?? (await getOrCreateProfileId());
-      if (!currentProfileId) {
-        setError('User not authenticated');
-        return null;
+      const actor = profileId ?? await getOrCreateProfileId();
+      if (!actor) throw new Error('User not authenticated');
+      if (!Number.isFinite(input.amount) || input.amount <= 0 ||
+          !Number.isSafeInteger(Math.round(input.amount * 100)) ||
+          Math.abs(input.amount * 100 - Math.round(input.amount * 100)) > 0.000001) {
+        throw new Error('Enter a positive amount with at most two decimal places');
       }
-
-      // Insert the expense
-      const { data: expense, error: expenseError } = await supabase
-        .from('expenses')
-        .insert({
-          group_id: groupId,
-          created_by: currentProfileId,
-          description: expenseData.description,
-          amount: expenseData.amount,
-          date: expenseData.date,
-          type: 'manual'
-        })
-        .select()
-        .single();
-
-      if (expenseError) {
-        setError(expenseError.message);
-        return null;
+      const { data: members, error: memberError } = await supabase
+        .from('memberships').select('user_id').eq('group_id', groupId);
+      if (memberError) throw memberError;
+      const memberIds = new Set((members ?? []).map(member => member.user_id));
+      const ids = input.participantIds ?? [...memberIds].sort();
+      if (!ids.length || new Set(ids).size !== ids.length || ids.some(id => !memberIds.has(id))) {
+        throw new Error('Select valid, distinct group participants');
       }
-
-      // Get group members
-      const { data: memberships, error: membershipError } = await supabase
-        .from('memberships')
-        .select('user_id')
-        .eq('group_id', groupId);
-
-      if (membershipError) {
-        setError(membershipError.message);
-        return null;
-      }
-
-      if (!memberships || memberships.length === 0) {
-        setError('No members found in group');
-        return null;
-      }
-
-      // Apply participant filter if provided, preserving the UI order so
-      // remainder cents are saved for the same people shown in the preview.
-      const membershipsByUserId = new Map(memberships.map(m => [m.user_id, m]));
-      const selectedMemberships = expenseData.participantIds && expenseData.participantIds.length > 0
-        ? expenseData.participantIds
-            .map(userId => membershipsByUserId.get(userId))
-            .filter((membership): membership is { user_id: string } => !!membership)
-        : [...memberships].sort((a, b) => a.user_id.localeCompare(b.user_id));
-
-      if (!selectedMemberships || selectedMemberships.length === 0) {
-        setError('At least one participant must be selected');
-        return null;
-      }
-
-      // Calculate splits
-      let splits: ExpenseSplitInsert[] = [];
-      
-      if (expenseData.splitMode === 'equal') {
-        const memberCount = selectedMemberships.length;
-        const shareAmounts = distributeAmountEvenly(
-          expenseData.amount,
-          selectedMemberships.map((membership) => membership.user_id)
-        );
-        
-        splits = selectedMemberships.map((membership) => ({
-          expense_id: expense.id,
-          user_id: membership.user_id,
-          share: 1 / memberCount,
-          amount: shareAmounts[membership.user_id]
-        }));
-      } else if (expenseData.splitMode === 'shares' && expenseData.shares) {
-        const positiveShares = expenseData.shares.filter(share => share.share > 0);
-        const totalShares = positiveShares.reduce((sum, share) => sum + share.share, 0);
-        if (!totalShares || totalShares <= 0) {
-          setError('Total shares must be greater than zero');
-          return null;
+      const paidBy = input.paidBy ?? actor;
+      if (!memberIds.has(paidBy)) throw new Error('The payer must be a group member');
+      let splits: { user_id: string; amount: number; share: number }[];
+      if (input.splitMode === 'equal') {
+        const amounts = distributeAmountEvenly(input.amount, ids);
+        splits = ids.map(id => ({ user_id: id, amount: amounts[id], share: 1 / ids.length }));
+      } else if (input.splitMode === 'shares') {
+        const shares = input.shares ?? [];
+        if (shares.some(s => !Number.isFinite(s.share) || s.share < 0)) {
+          throw new Error('Shares must be finite, non-negative numbers');
         }
-
-        const shareAmounts = distributeAmountByWeights(
-          expenseData.amount,
-          positiveShares.map((share) => ({
-            id: share.userId,
-            weight: share.share,
-          }))
-        );
-        
-        splits = positiveShares.map(share => ({
-          expense_id: expense.id,
-          user_id: share.userId,
-          share: share.share / totalShares,
-          amount: shareAmounts[share.userId] ?? 0
-        }));
-      }
-
-      // Insert expense splits
-      if (splits.length > 0) {
-        const { error: splitsError } = await supabase
-          .from('expense_splits')
-          .insert(splits);
-
-        if (splitsError) {
-          setError(splitsError.message);
-          return null;
+        const positive = shares.filter(s => s.share > 0);
+        const shareIds = positive.map(s => s.userId);
+        if (!positive.length || new Set(shareIds).size !== shareIds.length ||
+            shareIds.some(id => !memberIds.has(id)) ||
+            (input.participantIds && (shareIds.length !== ids.length || ids.some(id => !shareIds.includes(id))))) {
+          throw new Error('Positive shares must match the selected participants');
         }
+        const total = positive.reduce((sum, s) => sum + s.share, 0);
+        if (!Number.isFinite(total)) throw new Error('Share total is too large');
+        const amounts = distributeAmountByWeights(input.amount, positive.map(s => ({ id: s.userId, weight: s.share })));
+        splits = positive.map(s => ({ user_id: s.userId, amount: amounts[s.userId], share: s.share / total }));
+      } else {
+        throw new Error('Choose an equal or custom split');
       }
-
-      return expense;
+      // The database validates and saves the expense and every split in one transaction.
+      const { data, error: saveError } = await supabase.rpc('create_expense_with_splits', {
+        p_group_id: groupId, p_description: input.description.trim(), p_amount: input.amount,
+        p_date: input.date, p_paid_by: paidBy, p_splits: splits,
+      });
+      if (saveError) throw saveError;
+      return data;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err && typeof err === 'object' && 'message' in err ? String(err.message) : 'Failed to add expense');
       return null;
     } finally {
+      busy.current = false;
       setLoading(false);
     }
   };
-
-  return {
-    addExpense,
-    loading,
-    error
-  };
-}; 
+  return { addExpense, loading, error };
+};

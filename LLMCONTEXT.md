@@ -10,7 +10,7 @@ Backend: Supabase (Postgres + RLS), Supabase Edge Functions (Deno, service-role 
 
 Auth: Supabase Auth JWT.
 
-Core model: groups contain memberships (linking to profiles). expenses are split per person via expense_splits. Users can record settlements (payments) that can cover multiple expenses via settlement_items.
+Core model: groups contain memberships (linking to profiles). Expenses have a separate paid_by profile and are split per person via expense_splits. Confirmed settlements adjust group balances; optional settlement_items provide explanations. See SETTLEMENTS.md for the implemented lifecycle. Older auth-keyed settlement examples and planned non-atomic APIs below are historical and superseded.
 
 Product goals and automation feasibility are documented in PROJECT_GOALS.md. Treat that file as the canonical product-scope note for public expense links, payment handles, receipt parsing, transaction linking, invoice parsing, and on-device classification tradeoffs.
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import { useDeleteExpense } from '../hooks/useDeleteExpense';
 import { useExpenseSplits } from '../hooks/useExpenseSplits';
 import { useMembers } from '../hooks/useMembers';
 import { useProfile } from '../contexts/ProfileContext';
+import { ExpenseActions } from '../components/ExpenseActions';
 
 interface Props {
   navigation: any;
@@ -33,14 +34,19 @@ export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
   const formatDate = (date: string | null) =>
     date ? new Date(date).toLocaleDateString() : 'Unknown';
   const { profileId } = useProfile();
-  const { isCurrentUserAdmin } = useMembers(group.id);
+  const { isCurrentUserAdmin, members } = useMembers(group.id);
   const canManageExpense = expense.created_by === profileId || isCurrentUserAdmin;
+  const allocatedCents = splits.reduce((sum, split) => sum + Math.round(Number(split.amount) * 100), 0);
+  const incompleteSplits = !splitsLoading && !splitsError &&
+    (splits.length === 0 || allocatedCents !== Math.round(Number(expense.amount) * 100));
 
-  const handleEditExpense = () => {
+  const handleEditExpense = useCallback(() => {
+    if (!canManageExpense || deleting) return;
     navigation.navigate('AddExpense', { group, expense, fromKey });
-  };
+  }, [canManageExpense, deleting, navigation, group, expense, fromKey]);
 
-  const handleDeleteExpense = () => {
+  const handleDeleteExpense = useCallback(() => {
+    if (!canManageExpense || deleting) return;
     Alert.alert(
       'Delete Expense',
       'Are you sure you want to delete this expense?',
@@ -67,7 +73,13 @@ export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         },
       ]
     );
-  };
+  }, [canManageExpense, deleting, deleteExpense, expense.id, navigation, deleteError]);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: canManageExpense ? () => <ExpenseActions disabled={deleting} onEdit={handleEditExpense} onDelete={handleDeleteExpense} /> : undefined,
+    });
+  }, [navigation, canManageExpense, deleting, handleEditExpense, handleDeleteExpense]);
 
   return (
     <ScrollView style={styles.container}>
@@ -79,6 +91,12 @@ export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Details</Text>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Paid by:</Text>
+            <Text style={styles.detailValue}>
+              {members.find(member => member.user_id === (expense.paid_by ?? expense.created_by))?.user?.display_name ?? 'Unknown'}
+            </Text>
+          </View>
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Date:</Text>
             <Text style={styles.detailValue}>
@@ -105,6 +123,12 @@ export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Split Breakdown</Text>
+          {incompleteSplits && (
+            <Text style={styles.errorText}>
+              These shares total ${(allocatedCents / 100).toFixed(2)}, but the expense is ${Number(expense.amount).toFixed(2)}.
+              {' '}{canManageExpense ? 'Edit this expense to correct its shares before settling.' : 'Ask the creator or a group admin to correct the shares before settling.'}
+            </Text>
+          )}
           <View style={styles.breakdownContainer}>
             {splitsLoading ? (
               <ActivityIndicator />
@@ -133,37 +157,14 @@ export const ExpenseDetailScreen: React.FC<Props> = ({ navigation, route }) => {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Actions</Text>
-          {canManageExpense ? (
-            <>
-              <TouchableOpacity style={styles.actionButton} onPress={handleEditExpense}>
-                <Text style={styles.actionButtonText}>Edit Expense</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.deleteButton]}
-                onPress={handleDeleteExpense}
-                disabled={deleting}
-              >
-                {deleting ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.deleteButtonText}>Delete Expense</Text>
-                )}
-              </TouchableOpacity>
-            </>
-          ) : (
-            <Text style={styles.actionNote}>
-              Only the expense creator or a group admin can edit this expense.
-            </Text>
-          )}
-        </View>
-
-        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Settlements</Text>
           <View style={styles.settlementsContainer}>
             <Text style={styles.settlementsNote}>
-              Settlement tracking will be available when settlements are implemented.
+              Payments reduce the group balance and keep the original expense shares intact.
             </Text>
+            <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('GroupBalances', { group })}>
+              <Text style={styles.actionButtonText}>View balances and payments</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -290,23 +291,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  deleteButton: {
-    backgroundColor: '#ff3b30',
-  },
   actionButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-  },
-  deleteButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  actionNote: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
   },
   settlementsContainer: {
     padding: 16,

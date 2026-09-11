@@ -1,236 +1,166 @@
 import { renderHook, act } from '@testing-library/react';
-// Hook under test and its input type
 import { useAddExpense, AddExpenseData } from '../useAddExpense';
 
-// Mock the Supabase client that the hook relies on
-jest.mock('../../lib/supabase', () => ({
-  supabase: {
-    auth: { getUser: jest.fn() },
-    from: jest.fn(),
-  },
-}));
-
-// Mock profile context used by the hook
+jest.mock('../../lib/supabase', () => ({ supabase: { from: jest.fn(), rpc: jest.fn() } }));
 jest.mock('../../contexts/ProfileContext', () => ({
-  useProfile: jest.fn(),
-  getOrCreateProfileId: jest.fn(),
+  useProfile: jest.fn(), getOrCreateProfileId: jest.fn(),
 }));
-
 import { supabase } from '../../lib/supabase';
-import { useProfile } from '../../contexts/ProfileContext';
+import { useProfile, getOrCreateProfileId } from '../../contexts/ProfileContext';
 
-// Tests around creating a new expense and generating the corresponding splits
-describe('useAddExpense', () => {
+const input: AddExpenseData = {
+  description: ' Dinner ', amount: 100, date: '2026-09-10', splitMode: 'equal',
+};
+const mockMembers = jest.fn();
+const expense = { id: 'e1', paid_by: 'p1' };
+
+describe('useAddExpense atomic creation', () => {
   beforeEach(() => {
-    // Ensure mocks from previous tests don't affect the current one
     jest.resetAllMocks();
+    (useProfile as jest.Mock).mockReturnValue({ profileId: 'p1' });
+    mockMembers.mockResolvedValue({ data: ['p1', 'p2', 'p3'].map(user_id => ({ user_id })), error: null });
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table !== 'memberships') throw new Error('Unexpected direct table write: ' + table);
+      return { select: jest.fn(() => ({ eq: mockMembers })) };
+    });
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: expense, error: null });
   });
 
-  // When splitMode is "equal" each member should pay the same amount
-  it('adds an expense with equal split', async () => {
-    // Provide a profile id from context
-    (useProfile as jest.Mock).mockReturnValue({
-      profileId: 'p1',
-      loading: false,
-      error: null,
-      refresh: jest.fn(),
-      reset: jest.fn(),
-    });
-
-    const expense = { id: 'e1' };
-
-    // Mock all database calls used by the hook
-    const expenseInsert = jest.fn(() => ({ select: () => ({ single: jest.fn().mockResolvedValue({ data: expense, error: null }) }) }));
-    const membershipsSelect = jest.fn(() => ({ eq: jest.fn().mockResolvedValue({ data: [{ user_id: 'u1' }, { user_id: 'u2' }], error: null }) }));
-    const splitsInsert = jest.fn().mockResolvedValue({ error: null });
-
-    (supabase.from as jest.Mock).mockImplementation((table: string) => {
-      if (table === 'expenses') return { insert: expenseInsert };
-      if (table === 'memberships') return { select: membershipsSelect };
-      if (table === 'expense_splits') return { insert: splitsInsert };
-      return {} as any;
-    });
-
-    // Render the hook so we can call its methods
+  it('saves expense and equal splits atomically with profile payer', async () => {
     const { result } = renderHook(() => useAddExpense());
-
-    expect(result.current).toBeDefined();
-
-    // Data passed into the hook to create the expense
-    const data: AddExpenseData = {
-      description: 'd',
-      amount: 100,
-      date: '2020-01-01',
-      splitMode: 'equal',
-    };
-
-    let resultValue;
     await act(async () => {
-      resultValue = await result.current.addExpense('g1', data);
+      expect(await result.current.addExpense('g1', { ...input, participantIds: ['p1', 'p2'] })).toEqual(expense);
     });
-    expect(resultValue).toEqual(expense);
-    expect(expenseInsert).toHaveBeenCalledWith({
-      group_id: 'g1',
-      created_by: 'p1',
-      description: 'd',
-      amount: 100,
-      date: '2020-01-01',
-      type: 'manual',
+    expect(supabase.rpc).toHaveBeenCalledTimes(1);
+    expect(supabase.rpc).toHaveBeenCalledWith('create_expense_with_splits', {
+      p_group_id: 'g1', p_description: 'Dinner', p_amount: 100, p_date: input.date, p_paid_by: 'p1',
+      p_splits: [{ user_id: 'p1', amount: 50, share: 0.5 }, { user_id: 'p2', amount: 50, share: 0.5 }],
     });
-
-    // The hook should calculate two equal splits
-    const expectedSplits = [
-      { expense_id: 'e1', user_id: 'u1', share: 0.5, amount: 50 },
-      { expense_id: 'e1', user_id: 'u2', share: 0.5, amount: 50 },
-    ];
-
-    expect(splitsInsert).toHaveBeenCalledWith(expectedSplits);
+    expect(supabase.from).toHaveBeenCalledTimes(1);
+    expect(mockMembers).toHaveBeenCalledWith('group_id', 'g1');
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
   });
 
-  it('allocates remainder cents using participant order for uneven equal splits', async () => {
-    (useProfile as jest.Mock).mockReturnValue({
-      profileId: 'p1',
-      loading: false,
-      error: null,
-      refresh: jest.fn(),
-      reset: jest.fn(),
-    });
-
-    const expense = { id: 'e1' };
-    const expenseInsert = jest.fn(() => ({ select: () => ({ single: jest.fn().mockResolvedValue({ data: expense, error: null }) }) }));
-    const membershipsSelect = jest.fn(() => ({
-      eq: jest.fn().mockResolvedValue({
-        data: [{ user_id: 'u3' }, { user_id: 'u1' }, { user_id: 'u2' }],
-        error: null,
-      }),
-    }));
-    const splitsInsert = jest.fn().mockResolvedValue({ error: null });
-
-    (supabase.from as jest.Mock).mockImplementation((table: string) => {
-      if (table === 'expenses') return { insert: expenseInsert };
-      if (table === 'memberships') return { select: membershipsSelect };
-      if (table === 'expense_splits') return { insert: splitsInsert };
-      return {} as any;
-    });
-
+  it('allocates remainder cents in selected participant order', async () => {
     const { result } = renderHook(() => useAddExpense());
-
-    await act(async () => {
-      await result.current.addExpense('g1', {
-        description: 'd',
-        amount: 20,
-        date: '2020-01-01',
-        splitMode: 'equal',
-        participantIds: ['u1', 'u2', 'u3'],
-      });
-    });
-
-    expect(splitsInsert).toHaveBeenCalledWith([
-      { expense_id: 'e1', user_id: 'u1', share: 1 / 3, amount: 6.67 },
-      { expense_id: 'e1', user_id: 'u2', share: 1 / 3, amount: 6.67 },
-      { expense_id: 'e1', user_id: 'u3', share: 1 / 3, amount: 6.66 },
-    ]);
-  });
-
-  // When splitMode is "shares" the amounts are divided based on share values
-  it('adds an expense with share splits', async () => {
-    (useProfile as jest.Mock).mockReturnValue({
-      profileId: 'p1',
-      loading: false,
-      error: null,
-      refresh: jest.fn(),
-      reset: jest.fn(),
-    });
-
-    const expense = { id: 'e1' };
-
-    // Again mock the required database methods
-    const expenseInsert = jest.fn(() => ({ select: () => ({ single: jest.fn().mockResolvedValue({ data: expense, error: null }) }) }));
-    const membershipsSelect = jest.fn(() => ({ eq: jest.fn().mockResolvedValue({ data: [{ user_id: 'u1' }, { user_id: 'u2' }], error: null }) }));
-    const splitsInsert = jest.fn().mockResolvedValue({ error: null });
-
-    (supabase.from as jest.Mock).mockImplementation((table: string) => {
-      if (table === 'expenses') return { insert: expenseInsert };
-      if (table === 'memberships') return { select: membershipsSelect };
-      if (table === 'expense_splits') return { insert: splitsInsert };
-      return {} as any;
-    });
-
-    const { result } = renderHook(() => useAddExpense());
-
-    // Shares define that user u1 has 1 part and u2 has 2 parts of the total
-    const data: AddExpenseData = {
-      description: 'd',
-      amount: 90,
-      date: '2020-01-01',
-      splitMode: 'shares',
-      shares: [
-        { userId: 'u1', share: 1 },
-        { userId: 'u2', share: 2 },
+    await act(async () => { await result.current.addExpense('g1', { ...input, amount: 20, participantIds: ['p3', 'p1', 'p2'] }); });
+    expect(supabase.rpc).toHaveBeenCalledWith('create_expense_with_splits', expect.objectContaining({
+      p_splits: [
+        { user_id: 'p3', amount: 6.67, share: 1 / 3 },
+        { user_id: 'p1', amount: 6.67, share: 1 / 3 },
+        { user_id: 'p2', amount: 6.66, share: 1 / 3 },
       ],
-    };
-
-    let resultValue;
-    await act(async () => {
-      resultValue = await result.current.addExpense('g1', data);
-    });
-    expect(resultValue).toEqual(expense);
-
-    // Expect one third vs two thirds of the amount based on shares
-    const expectedSplits = [
-      { expense_id: 'e1', user_id: 'u1', share: 1 / 3, amount: 30 },
-      { expense_id: 'e1', user_id: 'u2', share: 2 / 3, amount: 60 },
-    ];
-
-    expect(splitsInsert).toHaveBeenCalledWith(expectedSplits);
+    }));
   });
 
-  it('does not create split rows for zero custom shares', async () => {
-    (useProfile as jest.Mock).mockReturnValue({
-      profileId: 'p1',
-      loading: false,
-      error: null,
-      refresh: jest.fn(),
-      reset: jest.fn(),
-    });
-
-    const expense = { id: 'e1' };
-    const expenseInsert = jest.fn(() => ({ select: () => ({ single: jest.fn().mockResolvedValue({ data: expense, error: null }) }) }));
-    const membershipsSelect = jest.fn(() => ({
-      eq: jest.fn().mockResolvedValue({
-        data: [{ user_id: 'u1' }, { user_id: 'u2' }, { user_id: 'u3' }],
-        error: null,
-      }),
-    }));
-    const splitsInsert = jest.fn().mockResolvedValue({ error: null });
-
-    (supabase.from as jest.Mock).mockImplementation((table: string) => {
-      if (table === 'expenses') return { insert: expenseInsert };
-      if (table === 'memberships') return { select: membershipsSelect };
-      if (table === 'expense_splits') return { insert: splitsInsert };
-      return {} as any;
-    });
-
+  it('sorts implicitly selected members for deterministic remainder allocation', async () => {
+    mockMembers.mockResolvedValue({ data: ['p3', 'p2', 'p1'].map(user_id => ({ user_id })), error: null });
     const { result } = renderHook(() => useAddExpense());
-
-    await act(async () => {
-      await result.current.addExpense('g1', {
-        description: 'd',
-        amount: 90,
-        date: '2020-01-01',
-        splitMode: 'shares',
-        participantIds: ['u1', 'u2', 'u3'],
-        shares: [
-          { userId: 'u1', share: 1 },
-          { userId: 'u2', share: 2 },
-          { userId: 'u3', share: 0 },
-        ],
-      });
-    });
-
-    expect(splitsInsert).toHaveBeenCalledWith([
-      { expense_id: 'e1', user_id: 'u1', share: 1 / 3, amount: 30 },
-      { expense_id: 'e1', user_id: 'u2', share: 2 / 3, amount: 60 },
+    await act(async () => { await result.current.addExpense('g1', { ...input, amount: 0.01 }); });
+    expect((supabase.rpc as jest.Mock).mock.calls[0][1].p_splits).toEqual([
+      { user_id: 'p1', amount: 0.01, share: 1 / 3 },
+      { user_id: 'p2', amount: 0, share: 1 / 3 },
+      { user_id: 'p3', amount: 0, share: 1 / 3 },
     ]);
+  });
+
+  it('normalizes custom shares and omits zero shares', async () => {
+    const { result } = renderHook(() => useAddExpense());
+    await act(async () => { await result.current.addExpense('g1', {
+      ...input, amount: 90, splitMode: 'shares', participantIds: ['p1', 'p2'],
+      shares: [{ userId: 'p1', share: 1 }, { userId: 'p2', share: 2 }, { userId: 'p3', share: 0 }],
+    }); });
+    expect(supabase.rpc).toHaveBeenCalledWith('create_expense_with_splits', expect.objectContaining({
+      p_splits: [{ user_id: 'p1', amount: 30, share: 1 / 3 }, { user_id: 'p2', amount: 60, share: 2 / 3 }],
+    }));
+  });
+
+  it('accepts an explicit placeholder payer excluded from the split', async () => {
+    mockMembers.mockResolvedValue({ data: ['p1', 'placeholder'].map(user_id => ({ user_id })), error: null });
+    const { result } = renderHook(() => useAddExpense());
+    await act(async () => { await result.current.addExpense('g1', { ...input, paidBy: 'placeholder', participantIds: ['p1'] }); });
+    expect(supabase.rpc).toHaveBeenCalledWith('create_expense_with_splits', expect.objectContaining({
+      p_paid_by: 'placeholder', p_splits: [{ user_id: 'p1', amount: 100, share: 1 }],
+    }));
+  });
+
+  it('does not save when membership fetch fails', async () => {
+    mockMembers.mockResolvedValue({ data: null, error: { message: 'Members unavailable' } });
+    const { result } = renderHook(() => useAddExpense());
+    await act(async () => { expect(await result.current.addExpense('g1', input)).toBeNull(); });
+    expect(supabase.rpc).not.toHaveBeenCalled();
+    expect(result.current.error).toBe('Members unavailable');
+    expect(result.current.loading).toBe(false);
+  });
+
+  it.each([
+    ['outsider participant', { participantIds: ['outsider'] }],
+    ['duplicate participants', { participantIds: ['p1', 'p1'] }],
+    ['empty participants', { participantIds: [] }],
+    ['outsider payer', { paidBy: 'outsider' }],
+    ['zero amount', { amount: 0 }],
+    ['negative amount', { amount: -1 }],
+    ['fractional cents', { amount: 1.001 }],
+    ['non-finite amount', { amount: Infinity }],
+    ['invalid amount', { amount: NaN }],
+    ['unsafe amount', { amount: Number.MAX_VALUE }],
+    ['empty shares', { splitMode: 'shares', shares: [] }],
+    ['negative share', { splitMode: 'shares', shares: [{ userId: 'p1', share: -1 }] }],
+    ['non-finite share', { splitMode: 'shares', shares: [{ userId: 'p1', share: Infinity }] }],
+    ['duplicate shares', { splitMode: 'shares', shares: [{ userId: 'p1', share: 1 }, { userId: 'p1', share: 1 }] }],
+    ['outsider share', { splitMode: 'shares', shares: [{ userId: 'outsider', share: 1 }] }],
+    ['mismatched shares', { splitMode: 'shares', participantIds: ['p1', 'p2'], shares: [{ userId: 'p1', share: 1 }] }],
+  ])('rejects %s before saving', async (_label, override) => {
+    const { result } = renderHook(() => useAddExpense());
+    await act(async () => { expect(await result.current.addExpense('g1', { ...input, ...override } as AddExpenseData)).toBeNull(); });
+    expect(supabase.rpc).not.toHaveBeenCalled();
+    expect(result.current.error).toBeTruthy();
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('rejects an empty group', async () => {
+    mockMembers.mockResolvedValue({ data: [], error: null });
+    const { result } = renderHook(() => useAddExpense());
+    await act(async () => { expect(await result.current.addExpense('g1', input)).toBeNull(); });
+    expect(supabase.rpc).not.toHaveBeenCalled();
+  });
+
+  it('uses a recovered profile ID and rejects an unauthenticated caller', async () => {
+    (useProfile as jest.Mock).mockReturnValue({ profileId: null });
+    (getOrCreateProfileId as jest.Mock).mockResolvedValueOnce('p2').mockResolvedValueOnce(null);
+    const { result } = renderHook(() => useAddExpense());
+    await act(async () => { await result.current.addExpense('g1', input); });
+    expect(supabase.rpc).toHaveBeenCalledWith('create_expense_with_splits', expect.objectContaining({ p_paid_by: 'p2' }));
+    await act(async () => { expect(await result.current.addExpense('g1', input)).toBeNull(); });
+    expect(supabase.rpc).toHaveBeenCalledTimes(1);
+    expect(result.current.error).toBe('User not authenticated');
+  });
+
+  it('surfaces atomic RPC failure with no direct-write fallback and allows retry', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValueOnce({ data: null, error: { message: 'Invalid split total' } });
+    const { result } = renderHook(() => useAddExpense());
+    await act(async () => { expect(await result.current.addExpense('g1', input)).toBeNull(); });
+    expect(result.current.error).toBe('Invalid split total');
+    expect(result.current.loading).toBe(false);
+    expect(supabase.from).toHaveBeenCalledTimes(1);
+    await act(async () => { expect(await result.current.addExpense('g1', input)).toEqual(expense); });
+    expect(result.current.error).toBeNull();
+    expect(supabase.rpc).toHaveBeenCalledTimes(2);
+  });
+
+  it('guards rapid double taps before React renders loading state', async () => {
+    let complete!: (value: { data: typeof expense; error: null }) => void;
+    (supabase.rpc as jest.Mock).mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+    const { result } = renderHook(() => useAddExpense());
+    let first!: Promise<unknown>;
+    await act(async () => {
+      first = result.current.addExpense('g1', input);
+      expect(await result.current.addExpense('g1', input)).toBeNull();
+    });
+    expect(result.current.loading).toBe(true);
+    expect(supabase.rpc).toHaveBeenCalledTimes(1);
+    await act(async () => { complete({ data: expense, error: null }); expect(await first).toEqual(expense); });
+    expect(result.current.loading).toBe(false);
   });
 });
